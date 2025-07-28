@@ -1,6 +1,7 @@
-# agents/summary_agent.py
+# agents/summary_agent.py (Agentic version)
 
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
+from langchain_core.runnables import RunnableLambda
 from langchain.schema import HumanMessage
 from dotenv import load_dotenv
 import os
@@ -14,7 +15,10 @@ nvidia_api_key = os.getenv("NVIDIA_API_KEY")
 
 llm = ChatNVIDIA(model="qwen/qwen3-235b-a22b", temperature=0)
 
-def summarize_paper(pdf_path: str) -> dict:
+summary_agent = RunnableLambda(lambda input: _summarize(input))
+
+def _summarize(pdf_path: str) -> dict:
+    print("📄 [summary_agent] Extracting and summarizing PDF...")
     clean_text = extract_clean_text(pdf_path)
     prompt = template.format(text=clean_text)
 
@@ -25,8 +29,12 @@ def summarize_paper(pdf_path: str) -> dict:
         parsed = json.loads(raw_output.strip())
         script = parsed["script_summary"]
         concepts = parsed["key_concepts"]
-    except:
-        script = [{"text": line.strip(), "animation": "TBD"} for line in raw_output.split("\n") if line.strip()]
+    except Exception as e:
+        print("⚠️ JSON parse failed, falling back to line split")
+        script = [
+            {"text": line.strip(), "animation": "TBD"}
+            for line in raw_output.split("\n") if line.strip()
+        ]
         concepts = []
 
     return {
@@ -35,16 +43,15 @@ def summarize_paper(pdf_path: str) -> dict:
     }
 
 if __name__ == "__main__":
-    pdf_path = "seal.pdf"  # Replace with your actual file
+    pdf_path = "seal.pdf"
+    output = summary_agent.invoke(pdf_path)
 
-    result = summarize_paper(pdf_path)
-    
     print("\n🧠 Script Summary:")
-    for i, scene in enumerate(result["script_summary"], 1):
+    for i, scene in enumerate(output["script_summary"], 1):
         print(f"\nScene {i}")
         print(f"Text: {scene['text']}")
         print(f"Animation: {scene['animation']}")
 
     print("\n🧩 Key Concepts:")
-    for concept in result["key_concepts"]:
-        print("-", concept)
+    for c in output["key_concepts"]:
+        print("-", c)

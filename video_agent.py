@@ -8,26 +8,25 @@ import os
 load_dotenv()
 nvidia_api_key = os.getenv("NVIDIA_API_KEY")
 
-llm = ChatNVIDIA(model="qwen/qwen3-235b-a22b", temperature=0)
+llm = ChatNVIDIA(model="qwen/qwen2.5-coder-32b-instruct", temperature=0)
 
 manim_prompt = """
-You're a ManimCommunity animation expert.
+You're a Manim animation expert.
 
-Generate a Manim Python script for the animation described below.
-It should define a Scene subclass and use animations like `Create`, `Write`, or `FadeIn`.
+ONLY respond with valid Manim code using ManimCommunity (no markdown, no explanation, no commentary).
+Do NOT include ``` or the word 'python'. Just raw Python code.
 
-Respond ONLY with valid Manim code (no markdown).
-
-Example format:
+Format:
 from manim import *
 
 class SceneName(Scene):
     def construct(self):
-        # your animation code here
+        # animation code
 
 Description:
 \"\"\"{description}\"\"\"
 """
+
 
 
 tts_prompt = """
@@ -45,8 +44,26 @@ def generate_video_assets(script_summary: list):
     for i, step in enumerate(script_summary, 1):
         prompt_text = manim_prompt.format(description=step["animation"])
         response = llm([HumanMessage(content=prompt_text)])
-        content = response.content.strip()
+        print(f"\n🧪 RAW response for Scene {i}:\n{response}\n")
+        # Extract string depending on return type
+        if isinstance(response, list):
+            content = response[0].content.strip()
+        elif hasattr(response, "content"):
+            content = response.content.strip()
+        elif hasattr(response, "generations"):
+            content = response.generations[0][0].text.strip()
+        else:
+            content = str(response).strip()  # fallback
 
+        # Print and warn if empty or invalid
+        if not content or "```" in content or "python" in content:
+            print(f"⚠️ Warning: Scene {i} returned unexpected format or markdown:\n{content}\n")
+        else:
+            print(f"\n✅ Manim Scene {i} Generated:\n{content}\n")
+
+        content = response.content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1].replace("python", "").strip()
         print(f"\n✅ Manim Scene {i} Generated:\n{content}\n")
         manim_scripts.append(content)
 

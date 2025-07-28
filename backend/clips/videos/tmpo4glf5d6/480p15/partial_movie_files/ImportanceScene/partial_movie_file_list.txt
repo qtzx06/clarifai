@@ -1,0 +1,13 @@
+# This file is used internally by FFMPEG.
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/1185818338_2915741769_223132457.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_1839128356_1415656830.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_2040122907_2153649742.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_2408024828_2621634856.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_3817678839_2290054393.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_3050158223_3264827406.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_2408024828_1242781948.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_4032512453_1135437903.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_1839128356_1647744087.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_4263083575_1108855973.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_2408024828_2887483229.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpo4glf5d6/480p15/partial_movie_files/ImportanceScene/624642324_1663035753_4059610182.mp4'

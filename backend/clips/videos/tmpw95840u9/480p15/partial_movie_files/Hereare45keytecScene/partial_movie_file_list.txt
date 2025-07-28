@@ -1,0 +1,13 @@
+# This file is used internally by FFMPEG.
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/1185818338_2438782436_223132457.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_1839128356_2409648325.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_773889500_4256977888.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_2408024828_2666543214.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_3817678839_1794604890.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_3050158223_1637579352.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_2408024828_4084525907.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_4032512453_2059839760.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_1839128356_3290571728.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_4263083575_4084182327.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_2408024828_2210827596.mp4'
+file 'file:/Users/qtzx/Codebase/clarifai/backend/clips/videos/tmpw95840u9/480p15/partial_movie_files/Hereare45keytecScene/624642324_450943317_3254367551.mp4'

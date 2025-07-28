@@ -1,0 +1,47 @@
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# PDF processing
+PyMuPDF==1.23.8
+pymupdf4llm==0.0.5
+
+# AI/ML libraries
+langchain==0.1.0
+langchain-community==0.0.10
+openai==1.3.7
+anthropic==0.7.8
+
+# Video generation
+manim==0.18.0
+moviepy==1.0.3
+Pillow==10.1.0
+
+# Voice generation
+lmnt==0.3.2
+
+# Google APIs for Veo
+google-generativeai==0.3.2
+
+# Database and storage
+sqlalchemy==2.0.23
+alembic==1.13.1
+python-multipart==0.0.6
+
+# Environment and utilities
+python-dotenv==1.0.0
+pydantic==2.5.1
+pydantic-settings==2.1.0
+
+# HTTP clients
+httpx==0.25.2
+requests==2.31.0
+
+# Async utilities
+asyncio==3.4.3
+aiofiles==23.2.1
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0

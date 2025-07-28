@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
+  // App directory is now stable in Next.js 14
 }
 
 module.exports = nextConfig 

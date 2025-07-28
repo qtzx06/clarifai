@@ -1,9 +1,9 @@
 import React from 'react'
-import { ConceptList } from '../concept-list'
-import { FileUploader } from '../file-uploader'
-import { QuestionSection } from '../question-section'
-import { VideoExplanation } from '../video-explanation'
-import { CodeImplementation } from '../code-implementation'
+import { ConceptList } from './components/concept-list'
+import { FileUploader } from './components/file-uploader'
+import { QuestionSection } from './components/question-section'
+import { VideoExplanation } from './components/video-explanation'
+import { CodeImplementation } from './components/code-implementation'
 
 export default function Home() {
   return (

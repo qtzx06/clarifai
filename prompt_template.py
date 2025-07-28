@@ -1,21 +1,25 @@
 template = """
-You are an educational AI explainer like 3Blue1Brown.
+You are an educational AI agent.
 
-Given the following research paper content, break down the **main concept** into 4–6 steps.
+Your job is to:
+1. Read the following research paper text.
+2. Summarize the main idea in 3–5 sentences, as if you’re preparing to teach it (like a 3Blue1Brown-style narration script).
+3. Identify 5–10 key concepts or terms mentioned in the paper (methods, architectures, models, techniques, etc.).
 
-Each step should include:
-- narration (teaching-style)
-- animation (what visual to show)
+Return your response as JSON with the following format:
 
-Return in JSON format:
-[
-  {{
-    "text": "...narration...",
-    "animation": "...what to show..."
-  }},
-  ...
-]
+{{
+  "script_summary": [
+    {{"text": "...", "animation": "..."}},
+    ...
+  ],
+  "key_concepts": [
+    "transformers",
+    "contrastive learning",
+    "latent space"
+  ]
+}}
 
-Here is the content:
+Paper text:
 {text}
 """

@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Lightbulb, Code, Video, ChevronDown, ChevronUp } from "lucide-react"
+import { Lightbulb, Video, ChevronDown, ChevronUp } from "lucide-react"
 
 // Mock data for demonstration
 const mockConcepts = [
@@ -14,7 +14,6 @@ const mockConcepts = [
     description:
       "The paper introduces a novel attention mechanism that replaces recurrent layers commonly used in encoder-decoder architectures, allowing for significantly more parallelization and reducing training time.",
     tags: ["Deep Learning", "NLP", "Attention Mechanism"],
-    hasCode: true,
     hasVideo: true,
   },
   {
@@ -23,7 +22,6 @@ const mockConcepts = [
     description:
       "A mechanism that relates different positions of a single sequence to compute a representation of the sequence. The self-attention mechanism allows the model to focus on different parts of the input sequence when producing the output.",
     tags: ["Attention", "Neural Networks"],
-    hasCode: true,
     hasVideo: true,
   },
   {
@@ -32,7 +30,6 @@ const mockConcepts = [
     description:
       "Instead of performing a single attention function, the paper proposes to linearly project the queries, keys and values multiple times with different learned projections, and perform attention in parallel.",
     tags: ["Parallel Processing", "Feature Learning"],
-    hasCode: true,
     hasVideo: false,
   },
 ]
@@ -81,12 +78,6 @@ export function ConceptList() {
             </CardContent>
 
             <CardFooter className="px-4 py-2 bg-muted/50 flex flex-wrap gap-2">
-              {concept.hasCode && (
-                <Button variant="outline" size="sm" className="h-8 bg-transparent">
-                  <Code className="h-3.5 w-3.5 mr-1" />
-                  View Code
-                </Button>
-              )}
               {concept.hasVideo && (
                 <Button variant="outline" size="sm" className="h-8 bg-transparent">
                   <Video className="h-3.5 w-3.5 mr-1" />

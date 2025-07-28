@@ -3,7 +3,6 @@ import { ConceptList } from './components/concept-list'
 import { FileUploader } from './components/file-uploader'
 import { QuestionSection } from './components/question-section'
 import { VideoExplanation } from './components/video-explanation'
-import { CodeImplementation } from './components/code-implementation'
 
 export default function Home() {
   return (
@@ -93,19 +92,6 @@ export default function Home() {
                 </h3>
               </div>
               <VideoExplanation />
-            </section>
-
-            {/* Code Implementation */}
-            <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <span className="text-purple-600 text-lg">💻</span>
-                </div>
-                <h3 className="text-xl font-semibold text-slate-800">
-                  Code Implementation
-                </h3>
-              </div>
-              <CodeImplementation />
             </section>
           </div>
         </div>

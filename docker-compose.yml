@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - BREV_NVIDIA_API_KEY=${BREV_NVIDIA_API_KEY}
+      - BREV_NVIDIA_BASE_URL=https://brev.nvidia.com/api
+      - DEBUG=True
+      - ALLOWED_HOSTS=["http://localhost:3000", "http://127.0.0.1:3000"]
+      - MAX_FILE_SIZE=52428800
+      - UPLOAD_DIR=storage
+      - VIDEO_DIR=videos
+      - CLIPS_DIR=clips
+      - MANIM_QUALITY=medium_quality
+    volumes:
+      - ./backend/storage:/app/storage
+      - ./backend/videos:/app/videos
+      - ./backend/clips:/app/clips
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  storage_data:
+  video_data:
+  clips_data:

@@ -14,7 +14,7 @@ A powerful research paper analysis tool that uses your AI API of choice (tested 
 - **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
 - **Video Generation**: Manim (AI-generated animation code)
 
-### Features
+## Features
 
 - **PDF Upload & Analysis** - Automatic paper parsing and concept extraction
 - **AI-Powered Insights** - Key concepts and research contributions via Gemini
@@ -33,7 +33,7 @@ cd clarifai
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/docs
 
-### Usage Workflow
+## Usage Workflow
 
 1. **Upload PDF** - Drag and drop a research paper
 2. **Auto-Analysis** - Gemini automatically extracts key concepts

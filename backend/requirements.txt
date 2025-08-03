@@ -1,0 +1,45 @@
+# Core FastAPI and web server dependencies
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+
+# PDF processing
+pdfplumber==0.11.4
+
+# Google Gemini AI API
+google-genai==1.0.0
+
+# File upload handling
+python-multipart==0.0.7
+
+# Environment and configuration
+python-dotenv==1.0.1
+pydantic==2.10.4
+pydantic-settings==2.8.1
+
+# HTTP clients and async utilities
+httpx==0.26.0
+aiofiles==23.2.1
+
+# Image processing (Python 3.13 compatible version)
+# Pillow==10.3.0  # Temporarily disabled due to Python 3.13 build issues
+
+# Development and testing (temporarily removed for Python 3.13 compatibility)
+# pytest==7.4.4
+# pytest-asyncio==0.21.1
+
+# Video generation with Manim (Python 3.13 compatible versions)
+manim==0.19.0
+moviepy==1.0.3
+ffmpeg-python==0.2.0
+numpy>=2.1
+scipy>=1.14.0
+
+# Image processing (required for Manim)
+Pillow==10.4.0
+
+# Additional Manim dependencies
+manimpango>=0.5.0
+moderngl>=5.0.0
+networkx>=2.6
+pycairo>=1.13
+rich>=12.0.0

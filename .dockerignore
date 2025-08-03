@@ -1,0 +1,56 @@
+# Ignore development files
+.git
+.gitignore
+*.md
+.env
+.env.local
+.env.example
+
+# Node modules and build artifacts
+node_modules/
+.next/
+build/
+dist/
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+backend/venv/
+backend/env/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+backend.log
+frontend.log
+*.pid
+
+# Test files and temporary data
+test_*.py
+test_clips/
+backend/test_clips/
+backend/clips/
+backend/storage/
+backend/videos/
+
+# Development scripts
+install_dependencies.sh

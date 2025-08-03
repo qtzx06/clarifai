@@ -1,76 +1,38 @@
-# Multi-stage Dockerfile for Clarifai Video Generation System
-FROM ubuntu:22.04 as base
+# Use a base image with Node.js and Python
+FROM node:18-slim as builder
 
-# Prevent interactive prompts during installation
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    # Python and build tools
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
-    python3-pip \
-    # Video processing
-    ffmpeg \
-    # LaTeX for mathematical rendering
-    texlive \
-    texlive-latex-extra \
-    texlive-fonts-recommended \
-    texlive-science \
-    texlive-pictures \
-    texlive-latex-recommended \
-    # Additional utilities
-    curl \
-    wget \
-    git \
-    # Node.js for frontend
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
+# 1. --- Build the Frontend ---
 WORKDIR /app
-
-# Backend setup
-COPY backend/requirements.txt ./backend/
-RUN python3.11 -m venv backend/venv && \
-    . backend/venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install -r backend/requirements.txt
-
-# Copy backend code
-COPY backend/ ./backend/
-
-# Frontend setup
-COPY frontend/package*.json ./frontend/
-WORKDIR /app/frontend
-RUN npm ci --only=production
-
-# Copy frontend code
+COPY frontend/package*.json ./
+RUN npm install
 COPY frontend/ ./
-
-# Build frontend
 RUN npm run build
 
-# Back to app root
+# 2. --- Setup the Backend ---
+FROM python:3.11-slim
 WORKDIR /app
 
-# Copy startup scripts
-COPY start.sh ./
-COPY install_dependencies.sh ./
-RUN chmod +x start.sh install_dependencies.sh
+# Install system dependencies for Manim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    texlive-full \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create directories for uploads and clips
-RUN mkdir -p backend/storage backend/clips backend/videos
+# Copy backend dependencies and install them
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose ports
-EXPOSE 3000 8000
+# Copy the built frontend from the first stage
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/public ./public
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+# Copy the backend code and startup script
+COPY start-prod.sh ./start-prod.sh
+RUN chmod +x ./start-prod.sh
+CMD ["./start-prod.sh"]
 
-# Default command
+# 3. --- Run Everything ---
+EXPOSE 3000
 CMD ["./start.sh"]

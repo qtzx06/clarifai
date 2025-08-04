@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
 
-from ...models.paper import VideoStatusResponse, VideoStatus, ConceptVideo
+from ...models.paper import Paper, Concept, VideoStatusResponse, VideoStatus, ConceptVideo
 from ...services.gemini_service import GeminiService
 from ...services.manim_generator import manim_generator
 from ...core.config import settings
@@ -65,10 +65,10 @@ async def generate_video_for_concept(
     
     print(f"🚨 Total concepts: {len(paper.concepts)}")
     
-    # Find the specific concept (concepts are stored as dictionaries)
+    # Find the specific concept (concepts are stored as Pydantic models)
     concept = None
     for c in paper.concepts:
-        if c["id"] == concept_id:
+        if c.id == concept_id:
             concept = c
             break
     
@@ -76,7 +76,7 @@ async def generate_video_for_concept(
         print(f"🚨 ERROR: Concept {concept_id} not found!")
         raise HTTPException(status_code=404, detail="Concept not found")
     
-    print(f"🚨 Concept found: {concept['name']}")
+    print(f"🚨 Concept found: {concept.name}")
     
     # SIMPLIFIED: Only allow ONE video generation at a time per paper
     if paper.video_status == VideoStatus.GENERATING:
@@ -102,7 +102,7 @@ async def generate_video_for_concept(
     from datetime import datetime
     paper.concept_videos[concept_id] = ConceptVideo(
         concept_id=concept_id,
-        concept_name=concept["name"],
+        concept_name=concept.name,
         status=VideoStatus.GENERATING,
         created_at=datetime.now()
     )
@@ -116,7 +116,7 @@ async def generate_video_for_concept(
         "message": "Video generation started for concept",
         "paper_id": paper_id,
         "concept_id": concept_id,
-        "concept_name": concept["name"],
+        "concept_name": concept.name,
         "status": "generating",
         "estimated_time": "45 seconds"
     }
@@ -189,7 +189,7 @@ async def download_video(paper_id: str):
         filename=f"{paper.title[:50]}_educational_video.mp4"
     )
 
-async def generate_video_background(paper_id: str, concept_id: str, concept: dict, quality: str):
+async def generate_video_background(paper_id: str, concept_id: str, concept: Concept, quality: str):
     """
     Background task for concept-specific video generation - FIXED VERSION
     """
@@ -198,14 +198,14 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: dic
             return
         
         paper = papers_db[paper_id]
-        print(f"🎬 Starting video generation for concept: {concept['name']}")
+        print(f"🎬 Starting video generation for concept: {concept.name}")
         
         # Ensure concept video entry exists
         if concept_id not in paper.concept_videos:
             from datetime import datetime
             paper.concept_videos[concept_id] = ConceptVideo(
                 concept_id=concept_id,
-                concept_name=concept["name"],
+                concept_name=concept.name,
                 status=VideoStatus.GENERATING,
                 created_at=datetime.now()
             )
@@ -224,7 +224,7 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: dic
         clip_paths = await manim_generator.generate_multiple_clips(clips_data, quality)
         
         if not clip_paths:
-            print(f"❌ No clips were generated for concept {concept['name']}")
+            print(f"❌ No clips were generated for concept {concept.name}")
             concept_video.status = VideoStatus.FAILED
             return
         
@@ -240,15 +240,15 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: dic
             paper.video_status = VideoStatus.COMPLETED
             paper.video_path = final_video_path
             paper.clips_paths = concept_video.clips_paths
-            print(f"✅ Successfully generated video for concept {concept['name']}: {final_video_path}")
+            print(f"✅ Successfully generated video for concept {concept.name}: {final_video_path}")
         else:
             concept_video.status = VideoStatus.FAILED
             # CRITICAL: Also update paper-level status
             paper.video_status = VideoStatus.FAILED
-            print(f"❌ Failed to stitch clips for concept {concept['name']}")
+            print(f"❌ Failed to stitch clips for concept {concept.name}")
         
     except Exception as e:
-        print(f"❌ Error generating video for concept {concept['name']}: {e}")
+        print(f"❌ Error generating video for concept {concept.name}: {e}")
         import traceback
         traceback.print_exc()
         if paper_id in papers_db:
@@ -257,7 +257,7 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: dic
                 papers_db[paper_id].concept_videos[concept_id].status = VideoStatus.FAILED
             papers_db[paper_id].video_status = VideoStatus.FAILED
 
-async def create_video_config_from_concept(paper_id: str, concept: dict, quality: str) -> VideoConfig:
+async def create_video_config_from_concept(paper_id: str, concept: Concept, quality: str) -> VideoConfig:
     """
     Create video configuration from single concept - WORKING VERSION
     """
@@ -268,13 +268,13 @@ async def create_video_config_from_concept(paper_id: str, concept: dict, quality
     clips = []
     
     try:
-        print(f"🎨 Generating Manim code for concept: {concept['name']}")
+        print(f"🎨 Generating Manim code for concept: {concept.name}")
         
         # Generate concept-specific Manim code using GEMINI
         try:
             manim_code = await gemini_service.generate_manim_code_with_gemini(
-                concept_name=concept["name"],
-                concept_description=concept["description"],
+                concept_name=concept.name,
+                concept_description=concept.description,
                 paper_title=paper.title
             )
             print(f"🚨 Gemini generated code: {len(manim_code) if manim_code else 0} chars")
@@ -286,23 +286,23 @@ async def create_video_config_from_concept(paper_id: str, concept: dict, quality
         if not manim_code or "class " not in manim_code:
             print(f"🚨 Using template fallback")
             manim_code = manim_generator.create_sample_manim_code(
-                concept=concept["name"],
-                explanation=concept["description"]
+                concept=concept.name,
+                explanation=concept.description
             )
         
         if manim_code:
             clip = VideoClip(
                 type="manim",
                 code=manim_code,
-                voice_over=f"Let's explore {concept['name']}. {concept['description'][:200]}..."
+                voice_over=f"Let's explore {concept.name}. {concept.description[:200]}..."
             )
             clips.append(clip)
-            print(f"✅ Generated clip for concept: {concept['name']}")
+            print(f"✅ Generated clip for concept: {concept.name}")
         else:
-            print(f"❌ Failed to generate clip for concept: {concept['name']}")
+            print(f"❌ Failed to generate clip for concept: {concept.name}")
     
     except Exception as e:
-        print(f"❌ Error generating clip for concept {concept['name']}: {e}")
+        print(f"❌ Error generating clip for concept {concept.name}: {e}")
     
     if not clips:
         # Enhanced fallback: create a basic intro clip
@@ -312,7 +312,7 @@ async def create_video_config_from_concept(paper_id: str, concept: dict, quality
             code=f'''
 class IntroScene(Scene):
     def construct(self):
-        title = Text("{concept['name'][:50]}", font_size=36)
+        title = Text("{concept.name[:50]}", font_size=36)
         title.to_edge(UP)
         
         subtitle = Text("Educational Explanation", font_size=24)
@@ -324,7 +324,7 @@ class IntroScene(Scene):
         self.wait(2)
         self.play(FadeOut(title), FadeOut(subtitle))
 ''',
-            voice_over=f"Welcome to this educational explanation of {concept['name']}."
+            voice_over=f"Welcome to this educational explanation of {concept.name}."
         )
         clips.append(intro_clip)
     
@@ -422,7 +422,7 @@ async def generate_video(
         background_tasks.add_task(
             generate_video_background,
             paper_id,
-            first_concept["id"],
+            first_concept.id,
             first_concept,
             request.quality or "medium_quality"
         )

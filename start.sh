@@ -108,11 +108,11 @@ echo -e "${BLUE}Backend API:${NC}  http://localhost:8000"
 echo -e "${BLUE}API Docs:${NC}     http://localhost:8000/docs"
 echo -e "\n${YELLOW}Features:${NC}"
 echo -e "• Upload PDF research papers"
-echo -e "• AI-powered concept extraction""
+echo -e "• AI-powered concept extraction"
 echo -e "• Educational video generation"
 echo -e "• Code implementation examples"
 echo -e "\n${BLUE}To stop the servers, run:${NC} ./stop.sh"
-echo -e "${BLUE}View logs:${NC} tail -f backend.log (or frontend.log)"
+echo -e "${BLUE}View logs:${NC} tail -f backend.log or frontend.log"
 
 # Return to original directory
 cd ..

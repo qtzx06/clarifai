@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     # File Storage
     MAX_FILE_SIZE: int = 52428800  # 50MB
     UPLOAD_DIR: str = "storage"
-    VIDEO_DIR: str = "backend/videos"
-    CLIPS_DIR: str = "backend/clips"
+    VIDEO_DIR: str = "videos"
+    CLIPS_DIR: str = "clips"
     
     # Manim Settings
     MANIM_QUALITY: str = "medium_quality"

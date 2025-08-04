@@ -33,7 +33,52 @@ if ! command_exists npm; then
     exit 1
 fi
 
+# Check for pyenv
+if ! command_exists pyenv; then
+    echo -e "${RED}pyenv is not installed. Please install it to continue.${NC}"
+    echo -e "${YELLOW}1. Run the automatic installer:${NC}"
+    echo -e "   curl https://pyenv.run | bash"
+    echo -e "${YELLOW}2. Add the following lines to your ~/.bashrc or ~/.zshrc file:${NC}"
+    echo -e '   export PYENV_ROOT="$HOME/.pyenv"'
+    echo -e '   [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"'
+    echo -e '   eval "$(pyenv init -)"'
+    echo -e "${YELLOW}3. Restart your shell:${NC}"
+    echo -e "   exec \"\$SHELL\""
+    echo -e "${YELLOW}Once pyenv is installed, please run ./start.sh again.${NC}"
+    exit 1
+fi
+
 echo -e "${GREEN}Dependencies check passed${NC}"
+
+# Agent environment setup
+echo -e "\n${BLUE}Setting up agent environment...${NC}"
+AGENT_PYTHON_VERSION="3.12.4"
+if ! pyenv versions --bare | grep -q "^${AGENT_PYTHON_VERSION}$\"; then
+    echo -e "${YELLOW}Python ${AGENT_PYTHON_VERSION} not found. Installing with pyenv (this may take a few minutes)...${NC}"
+    if ! pyenv install ${AGENT_PYTHON_VERSION}; then
+        echo -e "${RED}Python ${AGENT_PYTHON_VERSION} installation failed.${NC}"
+        echo -e "${YELLOW}This is usually due to missing system build dependencies.${NC}"
+        echo -e "${YELLOW}Please install the required packages for your OS and try again.${NC}"
+        echo -e "${BLUE}See the pyenv wiki for details: https://github.com/pyenv/pyenv/wiki/Common-build-problems${NC}"
+        echo -e "${YELLOW}For Arch Linux, try:${NC} sudo pacman -S --needed base-devel openssl zlib xz tk"
+        exit 1
+    fi
+fi
+
+AGENT_ENV_DIR="backend/agent_env"
+if [ ! -d "$AGENT_ENV_DIR" ]; then
+    echo -e "${YELLOW}Creating agent virtual environment...${NC}"
+    "$(pyenv root)/versions/${AGENT_PYTHON_VERSION}/bin/python3" -m venv $AGENT_ENV_DIR
+fi
+
+echo -e "${YELLOW}Installing agent dependencies...${NC}"
+$AGENT_ENV_DIR/bin/pip install -r backend/agent_requirements.txt
+
+
+
+
+
+
 
 # backend setup
 echo -e "\n${BLUE}Setting up backend...${NC}"
@@ -54,7 +99,7 @@ echo -e "${YELLOW}Installing Python dependencies...${NC}"
 pip install -r requirements.txt
 
 # create storage directories
-mkdir -p storage videos clips
+mkdir -p storage media/clips media/videos
 
 # start backend server in background
 echo -e "${GREEN}Starting backend server...${NC}"

@@ -80,7 +80,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
                 page_numbers=[],
                 text_snippets=[],
                 related_concepts=[],
-                mathematical_visualization=concept_data.get("mathematical_visualization", False)
+                concept_type=concept_data.get("concept_type", "conceptual")
             )
             paper.concepts.append(concept)
         
@@ -234,7 +234,7 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
                 page_numbers=[],
                 text_snippets=[],
                 related_concepts=[],
-                mathematical_visualization=concept_data.get("mathematical_visualization", False)
+                concept_type=concept_data.get("concept_type", "conceptual")
             )
             paper.concepts.append(concept)
         
@@ -284,7 +284,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
                 page_numbers=[],
                 text_snippets=[],
                 related_concepts=[],
-                mathematical_visualization=new_concept_data.get("mathematical_visualization", False)
+                concept_type=new_concept_data.get("concept_type", "conceptual")
             )
             
             # Add to existing concepts (don't replace)
@@ -299,12 +299,13 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
                     "name": new_concept.name,
                     "description": new_concept.description,
                     "importance_score": new_concept.importance_score,
-                    "mathematical_visualization": new_concept.mathematical_visualization
+                    "concept_type": new_concept.concept_type
                 },
                 "total_concepts": len(paper.concepts)
             }
         else:
-            raise HTTPException(status_code=500, detail="Failed to generate additional concept")
+            print(f"Failed to generate an additional concept for paper {paper_id}")
+            return {"success": False, "message": "Failed to generate an additional concept."}
         
     except Exception as e:
         print(f"Additional concept generation failed: {e}")

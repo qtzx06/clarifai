@@ -122,14 +122,8 @@ import math
     
     async def generate_multiple_clips(self, clips_config: List[Dict[str, Any]], quality: str = None) -> List[str]:
         """
-        Generate multiple Manim clips sequentially to maintain order - FROM WORKING clarifai-old
-        
-        Args:
-            clips_config: List of clip configurations with 'code' and optional 'voice_over'
-            quality: Manim quality setting
-            
-        Returns:
-            List of paths to generated video files
+        Generate multiple Manim clips sequentially to maintain order.
+        If any clip fails, the entire process is aborted.
         """
         quality = quality or self.quality
         clip_paths = []
@@ -149,14 +143,28 @@ import math
                     quality
                 )
                 
-                if video_path:
+                if video_path and os.path.exists(video_path):
                     clip_paths.append(video_path)
-                    print(f"Clip {i}: {video_path}")
+                    print(f"Clip {i} generated successfully: {video_path}")
                 else:
-                    print(f"Clip {i}: Failed to generate")
+                    print(f"Clip {i}: Failed to generate. Aborting.")
+                    # Clean up successfully generated clips from this run
+                    for path in clip_paths:
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
+                    return [] # Return empty list to indicate failure
                     
             except Exception as e:
-                print(f"Error processing clip {i}: {e}")
+                print(f"Error processing clip {i}: {e}. Aborting.")
+                # Clean up successfully generated clips from this run
+                for path in clip_paths:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                return [] # Return empty list to indicate failure
         
         print(f"Generated {len(clip_paths)} out of {len(clips_config)} clips")
         return clip_paths

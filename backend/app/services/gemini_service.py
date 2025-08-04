@@ -40,11 +40,13 @@ Return exactly 3 technical concepts in this JSON format:
   {{
     "name": "Specific Technical Term",
     "description": "Clear explanation in 1-2 sentences",
-    "importance_score": 0.8
+    "importance_score": 0.8,
+    "concept_type": "mathematical"
   }}
 ]
 
 Rules:
+- For "concept_type", choose the most fitting category from: "mathematical", "conceptual", "historical", "methodological", "technical", "empirical".
 - Extract REAL technical concepts from the paper
 - Use specific names from the paper, not generic phrases
 - Keep names under 50 characters
@@ -97,11 +99,13 @@ Return a JSON array with exactly 3 concepts in this format:
   {{
     "name": "Specific Technical Term",
     "description": "Clear explanation in 1-2 sentences without markdown formatting",
-    "importance_score": 0.8
+    "importance_score": 0.8,
+    "concept_type": "technical"
   }}
 ]
 
 Rules:
+- For "concept_type", choose the most fitting category from: "mathematical", "conceptual", "historical", "methodological", "technical", "empirical".
 - Extract ONLY the most important technical concepts
 - Use specific names from the paper, not generic phrases
 - No markdown formatting or special characters in descriptions
@@ -155,10 +159,12 @@ Generate a fresh, unique concept in JSON format:
 {{
     "name": "Specific Technical Term From Paper",
     "description": "Clear explanation in 1-2 sentences focusing on what makes this concept unique",
-    "importance_score": 0.7
+    "importance_score": 0.7,
+    "concept_type": "methodological"
 }}
 
 Requirements:
+- For "concept_type", choose the most fitting category from: "mathematical", "conceptual", "historical", "methodological", "technical", "empirical".
 - Must be genuinely different from existing concepts
 - Extract real technical terms from the paper, not generic descriptions
 - Each generation should find different aspects of the research
@@ -197,7 +203,7 @@ JSON object:"""
                                     "name": name[:80],
                                     "description": description[:400],
                                     "importance_score": min(1.0, max(0.5, float(concept_data.get('importance_score', 0.7)))),
-                                    "mathematical_visualization": True
+                                    "concept_type": concept_data.get("concept_type", "conceptual")
                                 }
                             else:
                                 print(f"Concept too similar to existing, using fallback: '{name}'")
@@ -228,42 +234,38 @@ JSON object:"""
             if not safe_name or safe_name[0].isdigit():
                 safe_name = "ConceptScene"
             
-            prompt = f"""Generate Manim Python code for an educational animation about this research concept.
+            prompt = f"""Generate Manim Python code for an educational animation in the style of 3blue1brown.
 
 Concept: {concept_name}
 Description: {concept_description}
 Paper: {paper_title}
 
 Create a Manim Scene class that:
-1. Shows the concept name as a title at the top
-2. Displays the key explanation text
-3. Uses mathematical visualizations (equations, graphs, diagrams) if appropriate
-4. Has smooth animations and transitions
-5. Runs for about 8-12 seconds total
-6. Uses proper spacing and layout
+1.  **Animation Zone:** Confines all animations to a central rectangle to avoid clutter.
+2.  **Visuals:** Uses clear, well-spaced mathematical objects (equations, graphs, diagrams).
+3.  **Transitions:** Has smooth, logical transitions between elements.
+4.  **Pacing:** Is well-paced, lasting about 10-15 seconds.
+5.  **Cleanup:** Fades out all objects at the end of the scene.
 
 Requirements:
-- Use ONLY standard Manim imports that are already included
-- Create a class named {safe_name}Scene that inherits from Scene
-- Use proper Manim syntax (self.play, self.wait, etc.)
-- Include Write() animations for text
-- Use Create() for mathematical objects
-- Include FadeOut() at the end to clean up
-- Keep text readable and well-positioned
-- No external imports beyond what's provided
+- Use ONLY standard Manim imports.
+- Create a class named {safe_name}Scene that inherits from Scene.
+- Use proper Manim syntax (self.play, self.wait, etc.).
+- Use Write() for text and Create() for shapes/math objects.
+- Keep all visual elements within a defined 'animation_zone' Rectangle.
 
 Return ONLY the Python class code, no markdown formatting or explanations:
 
 class {safe_name}Scene(Scene):
     def construct(self):
-        # Title
-        title = Text("{concept_name}", font_size=48)
-        title.to_edge(UP)
-        self.play(Write(title))
-        self.wait(1)
-        
+        # Define the animation zone
+        animation_zone = Rectangle(
+            width=12, height=6, stroke_color=GRAY, stroke_width=2
+        ).to_edge(DOWN)
+
         # Your educational animation code here
-        # Include explanation text and visual elements
+        # All animations must happen inside the 'animation_zone'
+        
         # End with FadeOut of all elements
 """
 
@@ -286,38 +288,39 @@ class {safe_name}Scene(Scene):
             print(f"Error generating Manim code: {e}")
             return self._generate_fallback_manim_code(concept_name, concept_description)
 
-    async def generate_intro_manim_code(self, paper_title: str, abstract: str = "") -> str:
+    async def generate_intro_manim_code(self, concept_name: str, paper_title: str = "") -> str:
         """
-        Generate intro Manim code for a research paper
+        Generate intro Manim code for a specific concept.
         """
         if not self.client:
-            return self._generate_fallback_intro_manim(paper_title)
+            return self._generate_fallback_intro_manim(concept_name)
         
         try:
-            prompt = f"""Create a Manim intro animation for this research paper.
+            prompt = f"""Create a Manim intro animation for a concept.
 
-Paper Title: {paper_title}
-Abstract: {abstract[:300]}
+Concept: "{concept_name}"
+From Paper: "{paper_title}"
 
 Create an IntroScene class that:
-1. Shows the paper title prominently
-2. Has a brief subtitle about the research
-3. Uses elegant animations and transitions
-4. Runs for about 8-10 seconds
-5. Sets up the educational video
+1.  Displays the concept name as a main title. Use `MarkupText` to wrap it if it's long.
+2.  Shows the paper title as a smaller subtitle below the main title.
+3.  Uses elegant, smooth animations (e.g., `FadeIn`, `Write`).
+4.  Is well-paced and professional, lasting about 5-7 seconds.
+5.  Fades out all elements at the end to leave a clean slate.
 
 Requirements:
-- Use ONLY: from manim import *
-- Create class IntroScene(Scene)
-- Use proper Manim syntax
-- Keep it professional and academic
-- No external imports
+-   Use `MarkupText(f"...", font_size=40)` for the main title to allow wrapping.
+-   Use `MarkupText(f"...", font_size=24)` for the subtitle.
+-   Center the text and ensure it doesn't go off-screen.
+-   Create a class named `IntroScene` that inherits from `Scene`.
+-   Return ONLY the Python class code.
+
+Example of good text handling:
+title = MarkupText(f'<span foreground="white">{concept_name}</span>', font_size=40)
+subtitle = MarkupText(f'<span foreground="gray">{paper_title}</span>', font_size=24)
+VGroup(title, subtitle).arrange(DOWN, buff=0.5)
 
 Return ONLY the Python class code:
-
-class IntroScene(Scene):
-    def construct(self):
-        # Your intro animation code here
 """
 
             response = await self._call_gemini_api(prompt)
@@ -327,13 +330,13 @@ class IntroScene(Scene):
                 if "class " in manim_code and "Scene" in manim_code:
                     return manim_code
                 else:
-                    return self._generate_fallback_intro_manim(paper_title)
+                    return self._generate_fallback_intro_manim(concept_name)
             else:
-                return self._generate_fallback_intro_manim(paper_title)
+                return self._generate_fallback_intro_manim(concept_name)
                 
         except Exception as e:
             print(f"Error generating intro Manim code: {e}")
-            return self._generate_fallback_intro_manim(paper_title)
+            return self._generate_fallback_intro_manim(concept_name)
     
     async def clarify_text_with_gemini(self, text: str, context: str = "") -> str:
         """
@@ -517,7 +520,7 @@ JSON:"""
                             "name": concept.get('name', '')[:80],
                             "description": concept.get('description', '')[:400],
                             "importance_score": min(1.0, max(0.5, float(concept.get('importance_score', 0.8)))),
-                            "mathematical_visualization": True
+                            "concept_type": concept.get("concept_type", "conceptual")
                         })
                 
                 if concepts:
@@ -589,31 +592,19 @@ class {safe_name}Scene(Scene):
         self.wait(0.2)
 '''
 
-    def _generate_fallback_intro_manim(self, paper_title: str) -> str:
+    def _generate_fallback_intro_manim(self, concept_name: str) -> str:
         """Generate fallback intro Manim code"""
         return f'''
 class IntroScene(Scene):
     def construct(self):
         # Title
-        title = Text("{paper_title[:50]}", font_size=36)
+        title = Text("{concept_name[:50]}", font_size=48)
         title.to_edge(UP)
         self.play(Write(title))
-        self.wait(1)
-        
-        # Subtitle
-        subtitle = Text("Educational Video Explanation", font_size=24, color=BLUE)
-        subtitle.next_to(title, DOWN, buff=1)
-        self.play(Write(subtitle))
         self.wait(2)
         
-        # Logo or symbol
-        symbol = Text("📖", font_size=72)
-        symbol.next_to(subtitle, DOWN, buff=1)
-        self.play(Write(symbol))
-        self.wait(1)
-        
         # Fade out
-        self.play(FadeOut(title), FadeOut(subtitle), FadeOut(symbol))
+        self.play(FadeOut(title))
         self.wait(1)
 '''
     
@@ -685,37 +676,37 @@ class IntroScene(Scene):
                 "name": "Research Implementation Details",
                 "description": "Specific implementation aspects and technical details of the research methodology",
                 "importance_score": 0.6,
-                "mathematical_visualization": False
+                "concept_type": "technical"
             },
             {
                 "name": "Experimental Design Framework",
                 "description": "The underlying framework and design principles used in the experimental approach",
                 "importance_score": 0.7,
-                "mathematical_visualization": False
+                "concept_type": "methodological"
             },
             {
                 "name": "Technical Analysis Method",
                 "description": "The analytical methodology and technical approach employed in this research",
                 "importance_score": 0.6,
-                "mathematical_visualization": False
+                "concept_type": "technical"
             },
             {
                 "name": "Data Processing Technique",
                 "description": "The specific data processing and analysis techniques utilized in the study",
                 "importance_score": 0.6,
-                "mathematical_visualization": False
+                "concept_type": "methodological"
             },
             {
                 "name": "Statistical Evaluation Approach",
                 "description": "The statistical methods and evaluation criteria used to assess the research results",
                 "importance_score": 0.6,
-                "mathematical_visualization": False
+                "concept_type": "mathematical"
             },
             {
                 "name": "Performance Optimization Strategy",
                 "description": "Techniques and strategies employed to optimize system or model performance",
                 "importance_score": 0.7,
-                "mathematical_visualization": False
+                "concept_type": "technical"
             }
         ]
         

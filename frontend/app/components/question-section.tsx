@@ -237,13 +237,14 @@ export function QuestionSection({ paperId, externalQuestion, onExternalQuestionP
             <div className="space-y-2">
               <p className="text-sm text-slate-500 mb-2">Try asking:</p>
               {suggestedQuestions.map((question, index) => (
-                <button
+                <Button
                   key={index}
                   onClick={() => setCurrentQuestion(question)}
-                  className="block w-full text-left p-2 text-sm bg-white border border-slate-200 rounded hover:bg-purple-50 hover:border-purple-300 transition-colors"
+                  variant="outline"
+                  className="w-full justify-start font-normal"
                 >
                   {question}
-                </button>
+                </Button>
               ))}
             </div>
           </div>

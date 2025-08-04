@@ -26,6 +26,7 @@ class ConceptVideo(BaseModel):
     video_path: Optional[str] = None
     clips_paths: List[str] = []
     created_at: datetime
+    logs: List[str] = []
 
 class Concept(BaseModel):
     id: str
@@ -35,7 +36,7 @@ class Concept(BaseModel):
     page_numbers: List[int] = []
     text_snippets: List[str] = []
     related_concepts: List[str] = []
-    mathematical_visualization: bool = False
+    concept_type: str = "conceptual"
 
 class Paper(BaseModel):
     id: str

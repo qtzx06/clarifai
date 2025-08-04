@@ -242,7 +242,7 @@ export function FileUploader({ onPaperUploaded }: FileUploaderProps) {
 
           {uploading && (
            <div className="space-y-2">
-             <Progress value={progress} className="h-2 w-full" />
+             <Progress value={progress} className="h-2 w-full [&>div]:bg-gradient-to-r [&>div]:from-blue-600 [&>div]:to-purple-600 [&>div]:animated-gradient" />
              <p className="text-sm text-center text-muted-foreground transition-all duration-500">
                {progress < 90 ? 'Uploading...' : processingMessages[processingMessageIndex]}
              </p>

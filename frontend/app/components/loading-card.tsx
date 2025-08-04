@@ -19,7 +19,7 @@ export function LoadingCard({
 }: LoadingCardProps) {
   return (
     <div className={`space-y-4 ${className}`}>
-      <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
+      <div className="relative bg-slate-100 rounded-lg flex items-center justify-center p-8 min-h-[280px]">
         <div className="text-center text-slate-500">
           {showSpinner && (
             <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
@@ -67,17 +67,23 @@ export function LoadingSkeleton({
 export function LoadingProgress({ 
   progress = 0, 
   message,
-  className = "" 
+  className = "",
+  variant = "default"
 }: { 
   progress?: number
   message?: string
   className?: string
+  variant?: "default" | "animated"
 }) {
+  const barStyle = variant === "animated"
+    ? "bg-gradient-to-r from-blue-600 to-purple-600 animated-gradient"
+    : "bg-slate-500";
+
   return (
     <div className={`space-y-2 ${className}`}>
-      <div className="w-full bg-slate-200 rounded-full h-2">
+      <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
         <div
-          className="bg-slate-500 h-2 rounded-full transition-all duration-300 ease-out"
+          className={`h-2 rounded-full transition-all duration-300 ease-out ${barStyle}`}
           style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
         />
       </div>

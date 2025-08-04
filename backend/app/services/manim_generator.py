@@ -52,7 +52,7 @@ import math
             # Extract scene name from code - CRITICAL FOR MANIM TO WORK
             scene_name = self.extract_scene_name(code)
             if not scene_name:
-                print(f"❌ No scene name found in code for {clip_name}")
+                print(f"No scene name found in code for {clip_name}")
                 return None
             
             # Run Manim command asynchronously - FIXED WITH SCENE NAME
@@ -68,9 +68,9 @@ import math
                 quality_flag
             ]
             
-            print(f"🎬 Generating Manim video: {clip_name}")
-            print(f"🎯 Scene name: {scene_name}")
-            print(f"📋 Command: {' '.join(cmd)}")
+            print(f"Generating Manim video: {clip_name}")
+            print(f"Scene name: {scene_name}")
+            print(f"Command: {' '.join(cmd)}")
             
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -81,21 +81,21 @@ import math
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                print(f"⚠️ Warning: Manim execution failed for clip {clip_name}")
-                print(f"❌ Error: {stderr.decode()}")
+                print(f"Warning: Manim execution failed for clip {clip_name}")
+                print(f"Error: {stderr.decode()}")
                 return None
             
             # Find the generated video file - EXACT SAME AS WORKING VERSION
             video_files = list(Path(self.output_dir).glob("**/*.mp4"))
             if not video_files:
-                print(f"⚠️ Warning: No video file was generated for clip {clip_name}")
+                print(f"Warning: No video file was generated for clip {clip_name}")
                 return None
             
             # Filter out partial files and find the most recent
             final_videos = [f for f in video_files if "partial" not in str(f)]
             
             if not final_videos:
-                print(f"⚠️ Warning: No final video file found for clip {clip_name}, using latest available")
+                print(f"Warning: No final video file found for clip {clip_name}, using latest available")
                 final_videos = video_files
             
             # Return the most recently created final video file
@@ -106,11 +106,11 @@ import math
             if str(latest_video) != final_path:
                 os.rename(str(latest_video), final_path)
             
-            print(f"✅ Successfully generated Manim video: {final_path}")
+            print(f"Successfully generated Manim video: {final_path}")
             return final_path
             
         except Exception as e:
-            print(f"❌ Error generating Manim video for {clip_name}: {e}")
+            print(f"Error generating Manim video for {clip_name}: {e}")
             return None
             
         finally:
@@ -136,11 +136,11 @@ import math
         
         for i, clip in enumerate(clips_config):
             if not clip.get('code'):
-                print(f"⚠️ Skipping clip {i}: no code provided")
+                print(f"Skipping clip {i}: no code provided")
                 continue
             
             clip_name = f"clip_{i:03d}"
-            print(f"🎬 Processing clip {i+1}/{len(clips_config)}: {clip_name}")
+            print(f"Processing clip {i+1}/{len(clips_config)}: {clip_name}")
             
             try:
                 video_path = await self.generate_manim_video(
@@ -151,14 +151,14 @@ import math
                 
                 if video_path:
                     clip_paths.append(video_path)
-                    print(f"✅ Clip {i}: {video_path}")
+                    print(f"Clip {i}: {video_path}")
                 else:
-                    print(f"❌ Clip {i}: Failed to generate")
+                    print(f"Clip {i}: Failed to generate")
                     
             except Exception as e:
-                print(f"❌ Error processing clip {i}: {e}")
+                print(f"Error processing clip {i}: {e}")
         
-        print(f"📊 Generated {len(clip_paths)} out of {len(clips_config)} clips")
+        print(f"Generated {len(clip_paths)} out of {len(clips_config)} clips")
         return clip_paths
     
     def create_sample_manim_code(self, concept: str, explanation: str) -> str:
@@ -228,10 +228,10 @@ class {safe_name}(Scene):
         match = re.search(pattern, code)
         if match:
             scene_name = match.group(1)
-            print(f"🔍 Extracted scene name: {scene_name}")
+            print(f"Extracted scene name: {scene_name}")
             return scene_name
         
-        print(f"⚠️ No scene class found in code")
+        print(f"No scene class found in code")
         return None
     
     async def test_manim_installation(self) -> bool:
@@ -248,14 +248,14 @@ class {safe_name}(Scene):
             
             if process.returncode == 0:
                 version = stdout.decode().strip()
-                print(f"✅ Manim installation detected: {version}")
+                print(f"Manim installation detected: {version}")
                 return True
             else:
-                print(f"❌ Manim test failed: {stderr.decode()}")
+                print(f"Manim test failed: {stderr.decode()}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Manim not found or error testing: {e}")
+            print(f"Manim not found or error testing: {e}")
             return False
 
 # Create a global instance for use in endpoints

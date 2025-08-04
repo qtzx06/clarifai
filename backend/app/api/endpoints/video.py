@@ -5,7 +5,7 @@ import os
 import asyncio
 import subprocess
 import shutil
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -46,79 +46,42 @@ async def generate_video_for_concept(
     request: GenerateVideoRequest = GenerateVideoRequest()
 ) -> Dict[str, str]:
     """
-    Generate educational video for a specific concept using Manim - WORKING VERSION
+    Generate educational video for a specific concept using Manim.
     """
-    print(f"🚨 WORKING VIDEO GENERATION: Video endpoint called!")
-    print(f"🚨 Paper ID: {paper_id}")
-    print(f"🚨 Concept ID: {concept_id}")
-    
     if paper_id not in papers_db:
-        print(f"🚨 ERROR: Paper {paper_id} not found!")
         raise HTTPException(status_code=404, detail="Paper not found")
-    
+
     paper = papers_db[paper_id]
-    print(f"🚨 Paper found: {paper.title}")
-    
-    if not paper.concepts:
-        print(f"🚨 ERROR: No concepts available!")
-        raise HTTPException(status_code=400, detail="No concepts available. Analyze paper first.")
-    
-    print(f"🚨 Total concepts: {len(paper.concepts)}")
-    
-    # Find the specific concept (concepts are stored as Pydantic models)
-    concept = None
-    for c in paper.concepts:
-        if c.id == concept_id:
-            concept = c
-            break
-    
+    concept = next((c for c in paper.concepts if c.id == concept_id), None)
+
     if not concept:
-        print(f"🚨 ERROR: Concept {concept_id} not found!")
         raise HTTPException(status_code=404, detail="Concept not found")
-    
-    print(f"🚨 Concept found: {concept.name}")
-    
-    # SIMPLIFIED: Only allow ONE video generation at a time per paper
-    if paper.video_status == VideoStatus.GENERATING:
-        raise HTTPException(
-            status_code=400,
-            detail="Video generation already in progress. Please wait for current video to complete before generating another."
-        )
-    
-    # Check if any concept is already generating
-    any_generating = any(
-        cv.status == VideoStatus.GENERATING
-        for cv in paper.concept_videos.values()
-    )
-    
-    if any_generating:
-        raise HTTPException(
-            status_code=400,
-            detail="Video generation already in progress. Please wait for current video to complete before generating another."
-        )
-    
-    # Set paper-level status AND create concept entry
+
+    if paper.video_status == VideoStatus.GENERATING or any(cv.status == VideoStatus.GENERATING for cv in paper.concept_videos.values()):
+        raise HTTPException(status_code=400, detail="A video is already being generated. Please wait.")
+
     paper.video_status = VideoStatus.GENERATING
-    from datetime import datetime
     paper.concept_videos[concept_id] = ConceptVideo(
         concept_id=concept_id,
         concept_name=concept.name,
         status=VideoStatus.GENERATING,
         created_at=datetime.now()
     )
-    print(f"🚨 SINGLE VIDEO MODE: Paper and concept status set to GENERATING")
-    
-    # Start background video generation - CONCEPT-SPECIFIC APPROACH
-    quality = request.quality or "medium_quality"
-    background_tasks.add_task(generate_video_background, paper_id, concept_id, concept, quality)
-    
+
+    background_tasks.add_task(
+        generate_video_background,
+        paper_id,
+        concept_id,
+        concept,
+        request.quality or "medium_quality"
+    )
+
     return {
         "message": "Video generation started for concept",
         "paper_id": paper_id,
         "concept_id": concept_id,
         "concept_name": concept.name,
-        "status": "generating",
-        "estimated_time": "45 seconds"
+        "status": "generating"
     }
 
 @router.get("/papers/{paper_id}/concepts/{concept_id}/video/status")
@@ -191,148 +154,75 @@ async def download_video(paper_id: str):
 
 async def generate_video_background(paper_id: str, concept_id: str, concept: Concept, quality: str):
     """
-    Background task for concept-specific video generation - FIXED VERSION
+    Background task for concept-specific video generation.
     """
     try:
         if paper_id not in papers_db:
             return
-        
+
         paper = papers_db[paper_id]
-        print(f"🎬 Starting video generation for concept: {concept.name}")
-        
-        # Ensure concept video entry exists
-        if concept_id not in paper.concept_videos:
-            from datetime import datetime
-            paper.concept_videos[concept_id] = ConceptVideo(
-                concept_id=concept_id,
-                concept_name=concept.name,
-                status=VideoStatus.GENERATING,
-                created_at=datetime.now()
-            )
-        
-        concept_video = paper.concept_videos[concept_id]
-        
-        # Step 1: Generate video configuration using concept - WORKING APPROACH
-        video_config = await create_video_config_from_concept(paper_id, concept, quality)
-        if not video_config:
+        concept_video = paper.concept_videos.get(concept_id)
+        if not concept_video:
+            return
+
+        video_config = await create_video_config_from_concept(paper, concept, quality)
+        if not video_config or not video_config.clips:
             concept_video.status = VideoStatus.FAILED
             return
-        
-        # Step 2: Generate all clips using Manim - WORKING APPROACH
+
         clips_data = [{"code": clip.code} for clip in video_config.clips]
-        
         clip_paths = await manim_generator.generate_multiple_clips(clips_data, quality)
-        
+
         if not clip_paths:
-            print(f"❌ No clips were generated for concept {concept.name}")
             concept_video.status = VideoStatus.FAILED
             return
-        
+
         concept_video.clips_paths = clip_paths
-        
-        # Step 3: Stitch clips together - CONCEPT-SPECIFIC FILE NAME
         final_video_path = await stitch_clips_simple(f"{paper_id}_{concept_id}", clip_paths)
-        
+
         if final_video_path:
             concept_video.video_path = final_video_path
             concept_video.status = VideoStatus.COMPLETED
-            # CRITICAL: Also update paper-level status for frontend polling
             paper.video_status = VideoStatus.COMPLETED
             paper.video_path = final_video_path
             paper.clips_paths = concept_video.clips_paths
-            print(f"✅ Successfully generated video for concept {concept.name}: {final_video_path}")
         else:
             concept_video.status = VideoStatus.FAILED
-            # CRITICAL: Also update paper-level status
             paper.video_status = VideoStatus.FAILED
-            print(f"❌ Failed to stitch clips for concept {concept.name}")
-        
-    except Exception as e:
-        print(f"❌ Error generating video for concept {concept.name}: {e}")
-        import traceback
-        traceback.print_exc()
-        if paper_id in papers_db:
-            # Update both concept and paper level status on error
-            if concept_id in papers_db[paper_id].concept_videos:
-                papers_db[paper_id].concept_videos[concept_id].status = VideoStatus.FAILED
-            papers_db[paper_id].video_status = VideoStatus.FAILED
 
-async def create_video_config_from_concept(paper_id: str, concept: Concept, quality: str) -> VideoConfig:
-    """
-    Create video configuration from single concept - WORKING VERSION
-    """
-    if paper_id not in papers_db:
-        return None
-    
-    paper = papers_db[paper_id]
-    clips = []
-    
-    try:
-        print(f"🎨 Generating Manim code for concept: {concept.name}")
-        
-        # Generate concept-specific Manim code using GEMINI
-        try:
-            manim_code = await gemini_service.generate_manim_code_with_gemini(
-                concept_name=concept.name,
-                concept_description=concept.description,
-                paper_title=paper.title
-            )
-            print(f"🚨 Gemini generated code: {len(manim_code) if manim_code else 0} chars")
-        except Exception as e:
-            print(f"🚨 Gemini failed: {e}")
-            manim_code = None
-        
-        # Fallback to template ONLY if Gemini fails
-        if not manim_code or "class " not in manim_code:
-            print(f"🚨 Using template fallback")
-            manim_code = manim_generator.create_sample_manim_code(
-                concept=concept.name,
-                explanation=concept.description
-            )
-        
-        if manim_code:
-            clip = VideoClip(
-                type="manim",
-                code=manim_code,
-                voice_over=f"Let's explore {concept.name}. {concept.description[:200]}..."
-            )
-            clips.append(clip)
-            print(f"✅ Generated clip for concept: {concept.name}")
-        else:
-            print(f"❌ Failed to generate clip for concept: {concept.name}")
-    
     except Exception as e:
-        print(f"❌ Error generating clip for concept {concept.name}: {e}")
-    
-    if not clips:
-        # Enhanced fallback: create a basic intro clip
-        print("Creating basic intro clip...")
-        intro_clip = VideoClip(
-            type="manim",
-            code=f'''
-class IntroScene(Scene):
-    def construct(self):
-        title = Text("{concept.name[:50]}", font_size=36)
-        title.to_edge(UP)
-        
-        subtitle = Text("Educational Explanation", font_size=24)
-        subtitle.next_to(title, DOWN, buff=1)
-        
-        self.play(Write(title))
-        self.wait(1)
-        self.play(Write(subtitle))
-        self.wait(2)
-        self.play(FadeOut(title), FadeOut(subtitle))
-''',
-            voice_over=f"Welcome to this educational explanation of {concept.name}."
+        print(f"Error generating video for concept {concept.name}: {e}")
+        if paper_id in papers_db:
+            paper = papers_db[paper_id]
+            if concept_id in paper.concept_videos:
+                paper.concept_videos[concept_id].status = VideoStatus.FAILED
+            paper.video_status = VideoStatus.FAILED
+
+async def create_video_config_from_concept(paper: Paper, concept: Concept, quality: str) -> Optional[VideoConfig]:
+    """
+    Creates a video configuration for a single concept.
+    """
+    try:
+        manim_code = await gemini_service.generate_manim_code_with_gemini(
+            concept_name=concept.name,
+            concept_description=concept.description,
+            paper_title=paper.title
         )
-        clips.append(intro_clip)
-    
-    return VideoConfig(
-        paper_id=paper_id,
-        clips=clips,
-        quality=quality
-    )
+
+        if not manim_code or "class " not in manim_code:
+            return None
+
+        clip = VideoClip(
+            type="manim",
+            code=manim_code,
+            voice_over=f"An explanation of {concept.name}."
+        )
+        
+        return VideoConfig(paper_id=paper.id, clips=[clip], quality=quality)
+
+    except Exception as e:
+        print(f"Error creating video config for concept {concept.name}: {e}")
+        return None
 
 async def stitch_clips_simple(file_prefix: str, clip_paths: List[str]) -> str:
     """

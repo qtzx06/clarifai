@@ -23,7 +23,7 @@ class ClarifyRequest(BaseModel):
     context: str = ""
 
 @router.post("/papers/{paper_id}/analyze")
-async def analyze_paper(paper_id: str) -> Dict[str, str]:
+async def analyze_paper(paper_id: str) -> Dict[str, Any]:
     """
     Trigger analysis of an uploaded paper
     """
@@ -37,13 +37,13 @@ async def analyze_paper(paper_id: str) -> Dict[str, str]:
     
     try:
         # Analyze paper with Gemini (this will also extract concepts)
-        print(f"🔍 Starting analysis for paper: {paper.title}")
+        print(f"Starting analysis for paper: {paper.title}")
         analysis_result = await gemini_service.analyze_paper_with_gemini(
             content=paper.content,
             title=paper.title
         )
         
-        print(f"🔍 Raw analysis concepts: {len(analysis_result['concepts'])} concepts")
+        print(f"Raw analysis concepts: {len(analysis_result['concepts'])} concepts")
         for concept in analysis_result["concepts"]:
             print(f"   - '{concept.get('name', 'NO_NAME')}': {concept.get('description', 'NO_DESC')[:50]}...")
         
@@ -65,9 +65,9 @@ async def analyze_paper(paper_id: str) -> Dict[str, str]:
             
             if not is_generic:
                 valid_concepts_data.append(concept_data)
-                print(f"✅ Valid analysis concept: '{name}'")
+                print(f"Valid analysis concept: '{name}'")
             else:
-                print(f"❌ Filtered out generic analysis concept: '{name}'")
+                print(f"Filtered out generic analysis concept: '{name}'")
         
         # Convert concepts to proper format
         paper.concepts = []
@@ -89,7 +89,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, str]:
         paper.methodology = analysis_result["methodology"]
         paper.full_analysis = analysis_result["full_analysis"]
         
-        print(f"✅ Analysis completed for paper: {paper.title}")
+        print(f"Analysis completed for paper: {paper.title}")
         
         return {
             "message": "Analysis completed successfully",
@@ -98,7 +98,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, str]:
         }
         
     except Exception as e:
-        print(f"❌ Analysis failed for paper {paper_id}: {e}")
+        print(f"Analysis failed for paper {paper_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @router.get("/papers/{paper_id}/concepts")
@@ -115,6 +115,24 @@ async def get_paper_concepts(paper_id: str) -> ConceptResponse:
         concepts=paper.concepts,
         total_count=len(paper.concepts)
     )
+
+@router.delete("/papers/{paper_id}/concepts/{concept_id}")
+async def delete_concept(paper_id: str, concept_id: str) -> Dict[str, str]:
+    """
+    Delete a concept from a paper
+    """
+    if paper_id not in papers_db:
+        raise HTTPException(status_code=404, detail="Paper not found")
+
+    paper = papers_db[paper_id]
+    initial_concept_count = len(paper.concepts)
+    paper.concepts = [c for c in paper.concepts if c.id != concept_id]
+
+    if len(paper.concepts) == initial_concept_count:
+        raise HTTPException(status_code=404, detail="Concept not found")
+
+    print(f"Deleted concept {concept_id} from paper {paper_id}")
+    return {"message": "Concept deleted successfully"}
 
 @router.post("/papers/{paper_id}/clarify")
 async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]:
@@ -140,7 +158,7 @@ async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]
         }
         
     except Exception as e:
-        print(f"❌ Clarification failed: {e}")
+        print(f"Clarification failed: {e}")
         raise HTTPException(status_code=500, detail=f"Clarification failed: {str(e)}")
 
 @router.get("/papers/{paper_id}/insights")
@@ -179,7 +197,7 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
         # Extract concepts using Gemini
         concepts_data = await gemini_service.generate_concepts_with_gemini(paper.content)
         
-        print(f"🔍 Raw concepts from Gemini: {len(concepts_data)} concepts")
+        print(f"Raw concepts from Gemini: {len(concepts_data)} concepts")
         for concept in concepts_data:
             print(f"   - '{concept.get('name', 'NO_NAME')}': {concept.get('description', 'NO_DESC')[:50]}...")
         
@@ -201,9 +219,9 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
             
             if not is_generic:
                 valid_concepts_data.append(concept_data)
-                print(f"✅ Valid concept: '{name}'")
+                print(f"Valid concept: '{name}'")
             else:
-                print(f"❌ Filtered out generic concept: '{name}'")
+                print(f"Filtered out generic concept: '{name}'")
         
         # Convert to Concept objects
         paper.concepts = []
@@ -220,7 +238,7 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
             )
             paper.concepts.append(concept)
         
-        print(f"🔄 Concepts refreshed for paper: {paper.title} ({len(paper.concepts)} valid concepts)")
+        print(f"Concepts refreshed for paper: {paper.title} ({len(paper.concepts)} valid concepts)")
         
         return ConceptResponse(
             concepts=paper.concepts,
@@ -228,7 +246,7 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
         )
         
     except Exception as e:
-        print(f"❌ Concept extraction failed: {e}")
+        print(f"Concept extraction failed: {e}")
         raise HTTPException(status_code=500, detail=f"Concept extraction failed: {str(e)}")
 
 @router.post("/papers/{paper_id}/generate-additional-concept")
@@ -248,7 +266,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
         # Get existing concept names to avoid duplicates
         existing_concept_names = [c.name for c in paper.concepts]
         
-        print(f"🔍 Generating additional concept beyond existing: {existing_concept_names}")
+        print(f"Generating additional concept beyond existing: {existing_concept_names}")
         
         # Generate ONE additional concept using Gemini
         new_concept_data = await gemini_service.generate_additional_concept_with_gemini(
@@ -272,7 +290,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
             # Add to existing concepts (don't replace)
             paper.concepts.append(new_concept)
             
-            print(f"✅ Generated additional concept: '{new_concept.name}'")
+            print(f"Generated additional concept: '{new_concept.name}'")
             
             return {
                 "success": True,
@@ -289,7 +307,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
             raise HTTPException(status_code=500, detail="Failed to generate additional concept")
         
     except Exception as e:
-        print(f"❌ Additional concept generation failed: {e}")
+        print(f"Additional concept generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Additional concept generation failed: {str(e)}")
 
 @router.get("/papers/{paper_id}/summary")

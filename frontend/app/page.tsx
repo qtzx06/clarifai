@@ -7,6 +7,7 @@ import { QuestionSection } from './components/question-section'
 import { VideoExplanation } from './components/video-explanation'
 import { CodeImplementation } from './components/code-implementation'
 import { PDFViewer } from './components/pdf-viewer'
+import { ChevronDown } from 'lucide-react'
 
 interface Paper {
   id: string
@@ -19,7 +20,7 @@ interface Paper {
 
 export default function Home() {
   const [currentPaper, setCurrentPaper] = useState<Paper | null>(null)
-  const [analysisTriggered, setAnalysisTriggered] = useState(false)
+  const [concepts, setConcepts] = useState<any[]>([])
   const [codeGenerationRequest, setCodeGenerationRequest] = useState<{conceptId: string, conceptName: string} | null>(null)
   const [showPdfViewer, setShowPdfViewer] = useState(false)
   const [codeGeneratingFor, setCodeGeneratingFor] = useState<string | null>(null)
@@ -45,34 +46,61 @@ export default function Home() {
   }, [videoGeneratingFor])
 
   const handlePaperUploaded = async (paper: Paper) => {
-    // Reset all state for new paper
-    setCurrentPaper(null)
-    setAnalysisTriggered(false)
-    setCodeGenerationRequest(null)
-    setShowPdfViewer(false)
-    setCodeGeneratingFor(null)
-    setVideoGeneratingFor(null)
-    setQuestionGeneratingFor(null)
-    setClarifyQuestion(null)
-    
-    // Set new paper
-    setCurrentPaper(paper)
-    
-    // Automatically trigger analysis after upload
+    // Reset state for new paper and immediately set status to processing
+    setCurrentPaper({ ...paper, analysis_status: 'processing' });
+    setConcepts([]);
+    setCodeGenerationRequest(null);
+    setShowPdfViewer(false);
+    setCodeGeneratingFor(null);
+    setVideoGeneratingFor(null);
+    setQuestionGeneratingFor(null);
+    setClarifyQuestion(null);
+
+    // 1. Trigger analysis on the backend
     try {
-      const response = await fetch(`http://localhost:8000/api/papers/${paper.id}/analyze`, {
+      const analyzeResponse = await fetch(`http://localhost:8000/api/papers/${paper.id}/analyze`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-      
-      if (response.ok) {
-        setAnalysisTriggered(true)
+      });
+      if (!analyzeResponse.ok) {
+        console.error('Failed to start analysis');
+        return; // Stop if analysis fails to start
       }
+      // Immediately update status on the frontend to show loading
+      setCurrentPaper(prev => prev ? { ...prev, analysis_status: 'processing' } : null);
     } catch (error) {
-      console.error('Failed to trigger analysis:', error)
+      console.error('Error triggering analysis:', error);
+      return;
     }
+
+    // 2. Poll for analysis completion
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusResponse = await fetch(`http://localhost:8000/api/papers/${paper.id}/status`);
+        if (!statusResponse.ok) {
+          // Stop polling if the status endpoint fails
+          clearInterval(pollInterval);
+          return;
+        }
+        
+        const statusData = await statusResponse.json();
+        
+        // Update paper status in UI to show "processing"
+        setCurrentPaper(prev => prev ? { ...prev, analysis_status: statusData.analysis_status } : null);
+
+        // 3. Fetch concepts when analysis is complete
+        if (statusData.analysis_status === 'completed') {
+          clearInterval(pollInterval); // Stop polling
+          const conceptsResponse = await fetch(`http://localhost:8000/api/papers/${paper.id}/concepts`);
+          if (conceptsResponse.ok) {
+            const conceptsData = await conceptsResponse.json();
+            setConcepts(conceptsData.concepts || []);
+          }
+        }
+      } catch (error) {
+        console.error('Error polling for status:', error);
+        clearInterval(pollInterval); // Stop polling on error
+      }
+    }, 3000); // Poll every 3 seconds
   }
 
   const handleVideoGeneration = (conceptId: string, conceptName: string) => {
@@ -221,7 +249,7 @@ export default function Home() {
                         ? 'bg-yellow-100 text-yellow-700'
                         : 'bg-gray-100 text-gray-700'
                     }`}>
-                      Analysis: {currentPaper.analysis_status}
+                      Analysis: {currentPaper.analysis_status.charAt(0).toUpperCase() + currentPaper.analysis_status.slice(1).toLowerCase()}
                     </span>
                   </div>
                 </div>
@@ -230,14 +258,12 @@ export default function Home() {
                 <div className="border-t border-slate-200 pt-4">
                   <button
                     onClick={() => setShowPdfViewer(!showPdfViewer)}
-                    className="flex items-center justify-between w-full text-left p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
+                    className="flex items-center justify-between w-full text-left p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-700">📖 View PDF</span>
+                      <span className="text-sm font-medium text-slate-700">View PDF</span>
                     </div>
-                    <span className={`text-slate-500 transition-transform ${showPdfViewer ? 'rotate-180' : ''}`}>
-                      ⌄
-                    </span>
+                    <ChevronDown className={`text-slate-500 transition-transform ${showPdfViewer ? 'rotate-180' : ''}`} />
                   </button>
                   
                   {/* Collapsible PDF Viewer */}
@@ -264,12 +290,15 @@ export default function Home() {
                 </div>
                 <ConceptList
                   paperId={currentPaper.id}
+                  concepts={concepts}
+                  onUpdateConcepts={setConcepts}
                   onGenerateVideo={handleVideoGeneration}
                   onGenerateCode={handleCodeGeneration}
                   onClarifyQuestion={handleClarifyQuestion}
                   codeGeneratingFor={codeGeneratingFor}
                   videoGeneratingFor={videoGeneratingFor}
                   questionGeneratingFor={questionGeneratingFor}
+                  analysisStatus={currentPaper.analysis_status}
                 />
               </section>
 

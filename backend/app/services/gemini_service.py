@@ -26,7 +26,7 @@ class GeminiService:
         Use Gemini 2.5 Flash for comprehensive paper analysis
         """
         if not self.client:
-            print("⚠️ No Gemini client available, using fallback analysis")
+            print("No Gemini client available, using fallback analysis")
             return await self._fallback_analysis(content, title)
         
         try:
@@ -56,12 +56,12 @@ JSON array:"""
             response = await self._call_gemini_api(prompt)
             
             if response:
-                print(f"✓ Gemini API response received: {len(response)} chars")
+                print(f"Gemini API response received: {len(response)} chars")
                 # Try to parse as JSON first
                 concepts = self._parse_gemini_concepts(response)
                 
                 if concepts:
-                    print(f"✓ Successfully parsed {len(concepts)} concepts")
+                    print(f"Successfully parsed {len(concepts)} concepts")
                     insights = ["Analysis completed with AI insights"]
                     return {
                         "concepts": concepts,
@@ -70,14 +70,14 @@ JSON array:"""
                         "full_analysis": response
                     }
                 else:
-                    print("⚠️ Failed to parse concepts from Gemini response")
+                    print("Failed to parse concepts from Gemini response")
                     return await self._fallback_analysis(content, title)
             else:
-                print("✗ No response from Gemini API")
+                print("No response from Gemini API")
                 return await self._fallback_analysis(content, title)
                 
         except Exception as e:
-            print(f"✗ Error in Gemini analysis: {e}")
+            print(f"Error in Gemini analysis: {e}")
             return await self._fallback_analysis(content, title)
     
     async def generate_concepts_with_gemini(self, content: str) -> List[Dict[str, Any]]:
@@ -121,7 +121,7 @@ JSON array:"""
                 return await self._fallback_concept_extraction(content)
                 
         except Exception as e:
-            print(f"✗ Error in Gemini concept extraction: {e}")
+            print(f"Error in Gemini concept extraction: {e}")
             return await self._fallback_concept_extraction(content)
     
     async def generate_additional_concept_with_gemini(self, content: str, existing_concepts: List[str]) -> Optional[Dict[str, Any]]:
@@ -192,7 +192,7 @@ JSON object:"""
                             )
                             
                             if not is_too_similar:
-                                print(f"✅ Generated fresh concept: '{name}'")
+                                print(f"Generated fresh concept: '{name}'")
                                 return {
                                     "name": name[:80],
                                     "description": description[:400],
@@ -200,7 +200,7 @@ JSON object:"""
                                     "mathematical_visualization": True
                                 }
                             else:
-                                print(f"⚠️ Concept too similar to existing, using fallback: '{name}'")
+                                print(f"Concept too similar to existing, using fallback: '{name}'")
                         
                 except (json.JSONDecodeError, KeyError, ValueError) as e:
                     print(f"JSON parsing failed for additional concept: {e}")
@@ -211,7 +211,7 @@ JSON object:"""
                 return await self._fallback_additional_concept(timestamp)
                 
         except Exception as e:
-            print(f"✗ Error generating additional concept: {e}")
+            print(f"Error generating additional concept: {e}")
             return await self._fallback_additional_concept()
 
     async def generate_manim_code_with_gemini(self, concept_name: str, concept_description: str, paper_title: str = "") -> str:
@@ -219,7 +219,7 @@ JSON object:"""
         Generate high-quality Manim code using Gemini 2.5
         """
         if not self.client:
-            print("⚠️ No Gemini client available, using fallback Manim code")
+            print("No Gemini client available, using fallback Manim code")
             return self._generate_fallback_manim_code(concept_name, concept_description)
         
         try:
@@ -273,17 +273,17 @@ class {safe_name}Scene(Scene):
                 # Clean and validate the Manim code
                 manim_code = self._clean_manim_code(response, concept_name)
                 if "class " in manim_code and "Scene" in manim_code:
-                    print(f"✅ Generated Manim code for: {concept_name}")
+                    print(f"Generated Manim code for: {concept_name}")
                     return manim_code
                 else:
-                    print(f"⚠️ Invalid Manim code generated, using fallback")
+                    print(f"Invalid Manim code generated, using fallback")
                     return self._generate_fallback_manim_code(concept_name, concept_description)
             else:
-                print(f"⚠️ No response from Gemini, using fallback")
+                print(f"No response from Gemini, using fallback")
                 return self._generate_fallback_manim_code(concept_name, concept_description)
                 
         except Exception as e:
-            print(f"✗ Error generating Manim code: {e}")
+            print(f"Error generating Manim code: {e}")
             return self._generate_fallback_manim_code(concept_name, concept_description)
 
     async def generate_intro_manim_code(self, paper_title: str, abstract: str = "") -> str:
@@ -332,7 +332,7 @@ class IntroScene(Scene):
                 return self._generate_fallback_intro_manim(paper_title)
                 
         except Exception as e:
-            print(f"✗ Error generating intro Manim code: {e}")
+            print(f"Error generating intro Manim code: {e}")
             return self._generate_fallback_intro_manim(paper_title)
     
     async def clarify_text_with_gemini(self, text: str, context: str = "") -> str:
@@ -354,7 +354,7 @@ Provide a clear, direct answer in 2-3 sentences. No bullet points, no markdown f
             return response if response else "Unable to provide clarification at this time."
             
         except Exception as e:
-            print(f"✗ Error in Gemini clarification: {e}")
+            print(f"Error in Gemini clarification: {e}")
             return "Unable to provide clarification at this time."
     
     async def extract_paper_metadata_with_gemini(self, content: str) -> Dict[str, Any]:
@@ -414,7 +414,7 @@ JSON:"""
             return {"title": "", "authors": [], "abstract": ""}
             
         except Exception as e:
-            print(f"✗ Error in Gemini metadata extraction: {e}")
+            print(f"Error in Gemini metadata extraction: {e}")
             return {"title": "", "authors": [], "abstract": ""}
     
     def _parse_metadata_from_text(self, text: str) -> Dict[str, Any]:
@@ -454,14 +454,14 @@ JSON:"""
             )
             
             if response and response.text:
-                print(f"✓ Gemini API call successful: {len(response.text)} chars")
+                print(f"Gemini API call successful: {len(response.text)} chars")
                 return response.text
             else:
-                print("✗ Gemini API returned empty response")
+                print("Gemini API returned empty response")
                 return None
                 
         except Exception as e:
-            print(f"✗ Gemini API call failed: {e}")
+            print(f"Gemini API call failed: {e}")
             return None
     
     def _extract_concepts_from_gemini_response(self, gemini_text: str, title: str) -> List[Dict[str, Any]]:
@@ -619,7 +619,7 @@ class IntroScene(Scene):
     
     async def _fallback_analysis(self, content: str, title: str) -> Dict[str, Any]:
         """Fallback analysis when API fails - provide some basic concepts"""
-        print(f"🔄 Using fallback analysis for: {title}")
+        print(f"Using fallback analysis for: {title}")
         
         # Generate some basic concepts based on common research paper patterns
         basic_concepts = []
@@ -664,7 +664,7 @@ class IntroScene(Scene):
     
     async def _fallback_concept_extraction(self, content: str) -> List[Dict[str, Any]]:
         """Fallback concept extraction - generate one basic concept"""
-        print("🔄 Using fallback concept extraction")
+        print("Using fallback concept extraction")
         return [{
             "name": "Additional Research Concept",
             "description": "An additional concept identified from the research paper",
@@ -673,7 +673,7 @@ class IntroScene(Scene):
     
     async def _fallback_additional_concept(self, timestamp: int = None) -> Dict[str, Any]:
         """Fallback for when additional concept generation fails - make it unique each time"""
-        print("🔄 Using fallback additional concept")
+        print("Using fallback additional concept")
         
         import time
         if timestamp is None:

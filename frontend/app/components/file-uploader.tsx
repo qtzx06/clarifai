@@ -177,7 +177,7 @@ export function FileUploader({ onPaperUploaded }: FileUploaderProps) {
           <div className="flex items-center gap-3">
             <CheckCircle className="h-6 w-6 text-green-600" />
             <div className="flex-1">
-              <h3 className="font-semibold text-green-800">Analysis Complete!</h3>
+              <h3 className="font-semibold text-green-800">Ready for Analysis</h3>
               <p className="text-sm text-green-700 mt-1">
                 {uploadedPaper.title || file?.name}
               </p>

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 
 from ...core.config import settings
-from ...models.paper import Paper, PaperResponse, AnalysisStatus
+from ...models.paper import Paper, PaperResponse, AnalysisStatus, Concept
 from ...services.pdf_parser import PDFParser
 from ...services.gemini_service import GeminiService
 
@@ -125,67 +125,32 @@ async def process_paper(paper_id: str):
     """
     if paper_id not in papers_db:
         return
-    
+
     paper = papers_db[paper_id]
-    
+
     try:
-        # Update status to processing
         paper.analysis_status = AnalysisStatus.PROCESSING
-        
-        # Parse PDF
-        print(f"📄 Parsing PDF for paper {paper_id}")
+
+        print(f"Parsing PDF for paper {paper_id}")
         parse_result = await pdf_parser.parse_pdf(paper.file_path)
-        
+
         if not parse_result["success"]:
             paper.analysis_status = AnalysisStatus.FAILED
             return
-        
-        # Update paper with parsed content
+
         paper.content = parse_result["content"]
-        
-        # Use AI to extract better metadata
-        print(f"🤖 Extracting metadata with AI for: {paper.filename}")
+
         ai_metadata = await gemini_service.extract_paper_metadata_with_gemini(paper.content)
-        
-        # Use AI metadata if available, fallback to PDF parser
+
         paper.title = ai_metadata.get("title") or parse_result["title"] or paper.filename
         paper.authors = ai_metadata.get("authors") or parse_result["authors"]
         paper.abstract = ai_metadata.get("abstract") or parse_result["abstract"]
-        
-        print(f"✅ Extracted metadata - Title: '{paper.title}', Authors: {len(paper.authors)}")
-        
-        # Analyze with Gemini
-        print(f"🤖 Analyzing paper with Gemini: {paper.title}")
-        analysis_result = await gemini_service.analyze_paper_with_gemini(
-            content=paper.content,
-            title=paper.title
-        )
-        
-        # Update paper with analysis results
-        paper.concepts = [
-            {
-                "id": str(uuid.uuid4()),
-                "name": concept["name"],
-                "description": concept["description"],
-                "importance_score": concept["importance_score"],
-                "page_numbers": [],
-                "text_snippets": [],
-                "related_concepts": [],
-                "mathematical_visualization": concept.get("mathematical_visualization", False)
-            }
-            for concept in analysis_result["concepts"]
-        ]
-        
-        paper.insights = analysis_result["insights"]
-        paper.methodology = analysis_result["methodology"]
-        paper.full_analysis = analysis_result["full_analysis"]
-        
-        # Mark as completed
+
         paper.analysis_status = AnalysisStatus.COMPLETED
-        print(f"✅ Paper analysis completed: {paper.title}")
-        
+        print(f"Paper processing completed: {paper.title}")
+
     except Exception as e:
-        print(f"❌ Error processing paper {paper_id}: {e}")
+        print(f"Error processing paper {paper_id}: {e}")
         paper.analysis_status = AnalysisStatus.FAILED
 
 @router.get("/papers/{paper_id}/pdf")

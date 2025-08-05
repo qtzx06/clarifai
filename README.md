@@ -63,12 +63,12 @@ Before you begin, ensure you have the following dependencies installed on your s
 
 2.  **Configure Environment Variables**
     Copy the example environment file and add your API key.
-    ```bashey:
-    ```
-    GEMINI_API_KEY="YOUR_API_KEY_HERE"
+    ```bash
     cp .env.example .env
     ```
-    Now, open the `.env` file and add your Google Gemini API k
+    Now, open the `.env` file and add your Google Gemini API key:
+    ```
+    GEMINI_API_KEY="YOUR_API_KEY_HERE"
     ```
 
 3.  **Make Scripts Executable**
@@ -117,6 +117,6 @@ The application is composed of three main parts:
 
 1.  **Frontend**: A Next.js application that provides the user interface for uploading papers, viewing concepts, and watching the generated videos.
 2.  **Backend**: A FastAPI server that handles file uploads, orchestrates the analysis and video generation process, and serves the final videos.
-3.  **Agent**: A standalone Python script (`run_agent.py`) that operates in an isolated environment. It communicates with the Gemini API to generate Manim scripts and then renders them into video clips. This isolation prevents dependency conflicts between Manim and the main backend.
+3.  **Agent**: A standalone Python script (`run_agent.py`) that operates in an isolated environment. It communicates with the Gemini API to generate Manim scripts and then renders them into video clips. Said isolation prevents dependency conflicts between Manim and the main backend.
 
 The backend and agent communicate via a streaming subprocess pipeline, with logs and results sent back to the backend in real-time and then relayed to the frontend over a WebSocket connection.

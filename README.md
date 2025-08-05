@@ -5,8 +5,8 @@ Clarifai is a full-stack web application designed to deconstruct complex researc
 ## Features
 
 - **PDF Upload & Analysis**: Upload research papers in PDF format for comprehensive AI-powered analysis.
-- **Key Concept Extraction**: Automatically identifies and extracts core concepts, methodologies, and insights from the text using Google's Gemini 1.5 Flash.
-- **Agentic Video Generation**: A standalone Python agent uses Manim to generate high-quality, 3blue1brown-style animations for each concept.
+- **Key Concept Extraction**: Automatically identifies and extracts core concepts, methodologies, and insights from the text using Google's Gemini Flash.
+- **Agentic Video Generation**: A LangChain agent uses Manim to generate high-quality, 3blue1brown-style animations for each concept.
 - **Self-Correcting Code Generation**: The agent makes up to three attempts to generate and render Manim code, analyzing the previous error to correct itself.
 - **Intelligent Scene Splitting**: An initial AI call intelligently splits a complex concept into multiple thematic scenes to create a more structured and understandable video narrative.
 - **Multi-Clip Video Stitching**: Successfully rendered video clips are automatically stitched together into a final, complete video using `ffmpeg`.
@@ -19,7 +19,7 @@ Clarifai is a full-stack web application designed to deconstruct complex researc
 
 - **Frontend**: Next.js, React, TypeScript, Tailwind CSS
 - **Backend**: FastAPI, Python, Uvicorn
-- **AI/ML**: Google Gemini 1.5 Flash, LangChain
+- **AI/ML**: Google Gemini Flash, LangChain
 - **Video Generation**: Manim Community v0.18.1
 - **Video Processing**: ffmpeg
 - **Environment Management**: `pyenv` for isolated Python versions, `venv` and `npm` for dependency management.

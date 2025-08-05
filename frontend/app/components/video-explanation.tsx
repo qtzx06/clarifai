@@ -214,8 +214,8 @@ export function VideoExplanation({
           <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
             <h4 className="font-medium text-slate-900">{video.conceptName}</h4>
             <div className="flex items-center gap-2">
-                <Button onClick={() => window.open(video.videoUrl, '_blank')} variant="ghost" size="sm"><Download className="h-4 w-4"/></Button>
-                <Button onClick={() => setGeneratedVideos(v => v.filter(v => v.conceptId !== video.conceptId))} variant="ghost" size="sm"><Trash2 className="h-4 w-4"/></Button>
+                <Button onClick={() => window.open(video.videoUrl, '_blank')} variant="ghost" size="sm" className="text-gray-400 hover:text-gray-600"><Download className="h-4 w-4"/></Button>
+                <Button onClick={() => setGeneratedVideos(v => v.filter(v => v.conceptId !== video.conceptId))} variant="ghost" size="sm" className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4"/></Button>
             </div>
           </div>
           <div className="relative">

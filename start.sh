@@ -38,7 +38,7 @@ printf "%b\n" "${GREEN}Dependencies check passed.${NC}"
 printf "\n%b\n" "${BLUE}Setting up agent environment...${NC}"
 AGENT_PYTHON_VERSION="3.12.4"
 
-if ! pyenv versions --bare | grep -q "^${AGENT_PYTHON_VERSION}$\"; then
+if ! pyenv versions --bare | grep -q "^${AGENT_PYTHON_VERSION}$"; then
     printf "%b\n" "${YELLOW}Python ${AGENT_PYTHON_VERSION} not found. Attempting to install with pyenv...${NC}"
     pyenv install ${AGENT_PYTHON_VERSION}
     printf "%b\n" "${GREEN}Python ${AGENT_PYTHON_VERSION} installed successfully.${NC}"
@@ -77,7 +77,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 printf "%b\n" "${YELLOW}Creating storage directories...${NC}"
-mkdir -p storage media/clips media/videos
+mkdir -p storage clips videos
 
 printf "%b\n" "${GREEN}Starting backend server...${NC}"
 nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &

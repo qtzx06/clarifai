@@ -42,4 +42,5 @@ manimpango>=0.5.0
 moderngl>=5.0.0
 networkx>=2.6
 pycairo>=1.13
-rich>=12.0.0websockets==12.0
+rich>=12.0.0
+websockets>=13.0

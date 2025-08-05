@@ -1,21 +1,12 @@
+import os
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .api.endpoints import upload, analysis, video
 from .core.config import settings
 import json
 
-app = FastAPI()
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_HOSTS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[str, WebSocket] = {}
@@ -32,23 +23,35 @@ class ConnectionManager:
         if paper_id in self.active_connections:
             await self.active_connections[paper_id].send_text(message)
 
-manager = ConnectionManager()
+app = FastAPI()
 
-# WebSocket endpoint
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+manager = ConnectionManager()
+video.manager = manager
+
 @app.websocket("/ws/papers/{paper_id}/logs")
 async def websocket_endpoint(websocket: WebSocket, paper_id: str):
     await manager.connect(paper_id, websocket)
     try:
         while True:
-            # Keep the connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(paper_id)
 
-# Pass the connection manager to the video endpoint
-video.manager = manager
+# --- THIS IS THE DEFINITIVE PATHING FIX ---
+# Mount the 'videos' directory at the top level of the API.
+videos_dir = Path("videos")
+os.makedirs(videos_dir, exist_ok=True)
+app.mount("/api/videos", StaticFiles(directory=videos_dir), name="videos")
 
-# Include API routers
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(analysis.router, prefix="/api", tags=["analysis"])
 app.include_router(video.router, prefix="/api", tags=["video"])

@@ -12,10 +12,10 @@ from ...models.paper import Paper, Concept, VideoStatus, ConceptVideo
 from ...core.config import settings
 from .upload import papers_db
 
-# This will be set by main.py
 manager = None
 
 router = APIRouter()
+
 
 class GenerateVideoRequest(BaseModel):
     concept_id: str = ""
@@ -45,6 +45,7 @@ async def run_agent_script(paper_id: str, concept_name: str, concept_description
     )
 
     final_result = None
+    successful_clips = []
     
     async for line in process.stdout:
         decoded_line = line.decode('utf-8').strip()
@@ -53,8 +54,11 @@ async def run_agent_script(paper_id: str, concept_name: str, concept_description
             log_message = decoded_line[5:]
             if manager:
                 await manager.send_log(paper_id, json.dumps({"type": "log", "message": log_message}))
-        elif decoded_line.startswith("RESULT: "):
-            result_json = decoded_line[8:]
+        elif decoded_line.startswith("CLIP_SUCCESS: "):
+            clip_path = decoded_line[14:]
+            successful_clips.append(clip_path)
+        elif decoded_line.startswith("FINAL_RESULT: "):
+            result_json = decoded_line[14:]
             try:
                 final_result = json.loads(result_json)
             except json.JSONDecodeError:
@@ -63,6 +67,7 @@ async def run_agent_script(paper_id: str, concept_name: str, concept_description
     await process.wait()
     
     if final_result:
+        final_result['clip_paths'] = successful_clips
         return final_result
 
     stderr_output = await process.stderr.read()
@@ -70,9 +75,9 @@ async def run_agent_script(paper_id: str, concept_name: str, concept_description
         error_message = f"Agent crashed without a final result. STDERR:\n{stderr_output.decode()}"
         if manager:
             await manager.send_log(paper_id, json.dumps({"type": "log", "message": error_message}))
-        return {"success": False, "error": error_message}
+        return {"success": False, "error": error_message, "clip_paths": successful_clips}
 
-    return {"success": False, "error": "Agent finished without providing a result."}
+    return {"success": False, "error": "Agent finished without providing a result.", "clip_paths": successful_clips}
 
 
 async def generate_video_background(paper_id: str, concept_id: str, concept: Concept):
@@ -91,7 +96,6 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
     try:
         await log("Handing off to agent for video generation...")
         
-        # Use absolute paths for media directories
         project_root = Path(__file__).resolve().parents[4]
         clips_dir = project_root / "backend/clips"
         videos_dir = project_root / "backend/videos"
@@ -101,22 +105,25 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
 
         result = await run_agent_script(paper_id, concept.name, concept.description, str(output_dir))
         
-        if result.get("success"):
-            clip_paths = result.get("clip_paths", [])
-            await log("Agent finished successfully. Stitching clips...")
-            final_video_path = await stitch_clips_simple(f"{paper_id}_{concept_id}", clip_paths, str(videos_dir))
+        clip_paths = result.get("clip_paths", [])
+        
+        if not clip_paths:
+            await log("Agent did not produce any successful video clips.")
+            concept_video.status = VideoStatus.FAILED
+            return
 
-            if final_video_path:
-                # Create a relative path suitable for serving static files
-                relative_video_path = os.path.relpath(final_video_path, os.path.abspath("backend"))
-                await log(f"Video successfully stitched: {relative_video_path}")
-                concept_video.video_path = f"/{relative_video_path}"
-                concept_video.status = VideoStatus.COMPLETED
-            else:
-                await log("Stitching failed.")
-                concept_video.status = VideoStatus.FAILED
+        await log("Agent finished. Stitching " + str(len(clip_paths)) + " successful clips...")
+        
+        final_video_path = await stitch_clips_simple(f"{paper_id}_{concept_id}", clip_paths, str(videos_dir))
+
+        if final_video_path:
+            file_name = os.path.basename(final_video_path)
+            accessible_path = f"/api/videos/{file_name}"
+            await log(f"Video successfully stitched: {accessible_path}")
+            concept_video.video_path = accessible_path
+            concept_video.status = VideoStatus.COMPLETED
         else:
-            await log("Agent failed to generate video.")
+            await log("Stitching failed.")
             concept_video.status = VideoStatus.FAILED
 
     except Exception as e:
@@ -134,8 +141,8 @@ async def stitch_clips_simple(file_prefix: str, clip_paths: List[str], videos_di
 
     with open(concat_file_path, "w", encoding="utf-8") as f:
         for path in clip_paths:
-            abs_path = os.path.abspath(path)
-            safe_path = abs_path.replace('\\', '/').replace("'", "'\\''")
+            # The agent now returns verified, absolute paths. No modification needed.
+            safe_path = str(path).replace('\\', '/').replace("'", "'\\''")
             f.write(f"file '{safe_path}'\n")
 
     cmd = [

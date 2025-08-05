@@ -204,7 +204,7 @@ export default function Home() {
                   ClarifAI
                 </h2>
                 <p className="text-slate-600 text-xl max-w-2xl mx-auto leading-relaxed">
-                  Transform any research paper into clear insights with AI-powered analysis
+                  Transform any research paper into clear insights with agentic AI-powered analysis
                 </p>
               </div>
               
@@ -329,14 +329,13 @@ export default function Home() {
                     <span className="text-green-600 text-lg">🎥</span>
                   </div>
                   <h3 className="text-xl font-semibold text-slate-800">
-                    Video Explanation
+                    Video Explanation Agent
                   </h3>
                 </div>
                 <VideoExplanation
                   paperId={currentPaper.id}
                   videoGenerationRequest={videoGenerationRequest}
                   onVideoGenerated={handleVideoGenerated}
-                  videoGeneratingFor={videoGeneratingFor}
                 />
               </section>
 

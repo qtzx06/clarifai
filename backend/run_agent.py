@@ -8,10 +8,6 @@ from pathlib import Path
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.schema import HumanMessage
 
-# --- THIS IS THE DEFINITIVE, ERROR-PROOF AGENT ---
-# The lambda hack has been removed and replaced with proper, explicit
-# function calls. This is the final, correct implementation.
-
 def log(message):
     """Prints a log message to stdout for real-time streaming."""
     print("LOG: " + str(message), flush=True)
@@ -42,14 +38,21 @@ def get_video_scenes(llm, concept_name, concept_description):
     response_text = response.content.strip()
     log("--- AI RESPONSE (SCENES) ---")
     log(response_text)
-    try:
-        scenes = json.loads(response_text)
-        if isinstance(scenes, list) and all(isinstance(s, str) for s in scenes):
-            log("--- DEBUG: Successfully parsed " + str(len(scenes)) + " scenes. ---")
-            return scenes
-    except (json.JSONDecodeError, TypeError):
-        log("--- WARNING: Failed to parse scenes from AI response. Falling back to sentence splitting. ---")
-        return [s.strip() for s in concept_description.split('.') if len(s.strip()) > 10] or [concept_description]
+    
+    json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
+    
+    if json_match:
+        json_string = json_match.group(0)
+        try:
+            scenes = json.loads(json_string)
+            if isinstance(scenes, list) and all(isinstance(s, str) for s in scenes):
+                log("--- DEBUG: Successfully parsed " + str(len(scenes)) + " scenes. ---")
+                return scenes
+        except json.JSONDecodeError:
+            log("--- WARNING: Found a JSON-like string, but it was invalid. Falling back. ---")
+    
+    log("--- WARNING: Failed to find or parse scenes from AI response. Falling back to sentence splitting. ---")
+    return [s.strip() for s in concept_description.split('.') if len(s.strip()) > 10] or [concept_description]
 
 def sanitize_code(code):
     """Aggressively sanitizes the AI's code output."""
@@ -93,8 +96,11 @@ def correct_manim_code(llm, code, error):
     log(new_code)
     return sanitize_code(new_code)
 
-def render_manim_code(code, output_path):
-    """Renders a single Manim scene."""
+def render_manim_code(code, output_dir, file_name):
+    """
+    Renders a single Manim scene and returns the full path to the complete video file,
+    ignoring the partial movie files.
+    """
     class_name = "Scene"
     for line in code.split('\n'):
         if line.strip().startswith("class ") and "Scene" in line:
@@ -107,18 +113,35 @@ def render_manim_code(code, output_path):
         temp_file_path = temp_file.name
 
     try:
-        output_dir = os.path.dirname(output_path)
-        file_name = os.path.basename(output_path)
         cmd = [
-            sys.executable, "-m", "manim", temp_file_path, class_name, "-o", file_name,
-            "--media_dir", output_dir, "-v", "WARNING", "-ql",
+            sys.executable, "-m", "manim", temp_file_path, class_name,
+            "-o", file_name,
+            "--media_dir", output_dir,
+            "-v", "WARNING", "-ql",
         ]
         log("--- DEBUG: Executing Manim command: " + " ".join(cmd) + " ---")
         process = subprocess.run(cmd, capture_output=True, text=True, check=False, encoding='utf-8')
         
         if process.returncode != 0:
-            return "--- MANIM STDOUT ---\\n" + process.stdout + "\\n\\n--- MANIM STDERR ---\\n" + process.stderr
-        return None
+            # --- THIS IS THE DEFINITIVE FIX FOR THE SYNTAX ERROR ---
+            # Build the error message safely to prevent parsing errors.
+            error_parts = [
+                "--- MANIM STDOUT ---\\n",
+                process.stdout,
+                "\\n\\n--- MANIM STDERR ---\\n",
+                process.stderr
+            ]
+            error_message = "".join(error_parts)
+            return None, error_message
+
+        for root, dirs, files in os.walk(output_dir):
+            if file_name in files and 'partial_movie_files' not in root:
+                found_path = os.path.join(root, file_name)
+                log("--- DEBUG: Found final rendered video at: " + found_path + " ---")
+                return found_path, None
+        
+        return None, "--- AGENT ERROR: Could not find the rendered video file after a successful render. ---"
+
     finally:
         os.unlink(temp_file_path)
 
@@ -126,7 +149,7 @@ def main():
     try:
         if len(sys.argv) != 5:
             log("--- FATAL ERROR: Agent requires 4 arguments. ---")
-            print("RESULT: " + json.dumps({'success': False, 'error': 'Invalid arguments'}))
+            print("FINAL_RESULT: " + json.dumps({'success': False, 'error': 'Invalid arguments'}))
             return
 
         concept_name, concept_description, output_dir, api_key = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -134,11 +157,11 @@ def main():
         llm = initialize_llm(api_key)
         
         scenes = get_video_scenes(llm, concept_name, concept_description)
-        clip_paths = []
+        successful_clips = 0
 
         for i, scene_description in enumerate(scenes):
             log("--- Generating Clip " + str(i+1) + "/" + str(len(scenes)) + ": " + scene_description + " ---")
-            output_path = os.path.join(output_dir, "clip_" + str(i) + ".mp4")
+            output_filename = "clip_" + str(i) + ".mp4"
             
             code = None
             error = "Initial code generation failed."
@@ -150,25 +173,29 @@ def main():
                 else:
                     code = correct_manim_code(llm, code, error)
 
-                error = render_manim_code(code, output_path)
+                video_path, error = render_manim_code(code, output_dir, output_filename)
 
                 if error is None:
                     log("--- Clip " + str(i+1) + " rendered successfully. ---")
-                    clip_paths.append(output_path)
+                    print("CLIP_SUCCESS: " + video_path, flush=True)
+                    successful_clips += 1
                     break 
                 
                 log("--- Clip " + str(i+1) + ", Attempt " + str(attempt) + " failed. ---")
             
             if error is not None:
-                log("--- FAILED to generate clip " + str(i+1) + " after 3 attempts. Aborting. ---")
-                print("RESULT: " + json.dumps({'success': False, 'error': 'A clip failed to render.'}))
-                return
-
-        print("RESULT: " + json.dumps({'success': True, 'clip_paths': clip_paths}))
+                log("--- FAILED to generate clip " + str(i+1) + " after 3 attempts. Skipping this clip. ---")
+        
+        if successful_clips == 0:
+            log("--- All clips failed to generate. Aborting video generation. ---")
+            print("FINAL_RESULT: " + json.dumps({'success': False, 'error': 'All clips failed to render.'}))
+        else:
+            log("--- Agent finished generating clips. ---")
+            print("FINAL_RESULT: " + json.dumps({'success': True}))
 
     except Exception as e:
         log("--- FATAL CRASH in agent's main loop: " + str(e) + " ---")
-        print("RESULT: " + json.dumps({'success': False, 'error': 'Agent crashed unexpectedly'}))
+        print("FINAL_RESULT: " + json.dumps({'success': False, 'error': 'Agent crashed unexpectedly'}))
 
 if __name__ == "__main__":
     main()

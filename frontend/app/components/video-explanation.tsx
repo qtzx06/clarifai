@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Download, Trash2, Bot, Sparkles, AlertTriangle, Server } from "lucide-react"
+import { Download, Trash2, Bot, Sparkles, AlertTriangle, Server, Film } from "lucide-react"
 
 const API_BASE = "http://localhost:8000"
 const WS_BASE = "ws://localhost:8000"
@@ -93,8 +93,7 @@ export function VideoExplanation({
     }
   }, [videoGenerationRequest, paperId])
   
-  // --- THIS IS THE DEFINITIVE AUTO-SCROLL FIX ---
-  // It directly sets the scrollTop of the container, ensuring only it scrolls.
+  // Effect for smart scrolling
   useEffect(() => {
     const container = logsContainerRef.current;
     if (container) {
@@ -157,7 +156,14 @@ export function VideoExplanation({
   if (!paperId) {
     return (
       <div className="relative aspect-video bg-slate-100 rounded-lg flex items-center justify-center">
-        <p className="text-sm text-slate-500">Upload a paper to generate video explanations</p>
+        <div className="text-center text-slate-500">
+          <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
+            <Film className="h-8 w-8 text-slate-400" />
+          </div>
+          <p className="text-sm">
+            Upload a paper to generate video explanations
+          </p>
+        </div>
       </div>
     )
   }
@@ -186,13 +192,23 @@ export function VideoExplanation({
     )
   }
 
+  if (generatedVideos.length === 0) {
+    return (
+      <div className="relative aspect-video bg-slate-100 rounded-lg flex items-center justify-center">
+        <div className="text-center text-slate-500">
+          <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
+            <Film className="h-8 w-8 text-slate-400" />
+          </div>
+          <p className="text-sm">
+            Click "Video" on a concept to generate an explanation
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      {generatedVideos.length === 0 && (
-        <div className="relative aspect-video bg-slate-100 rounded-lg flex items-center justify-center">
-          <p className="text-sm text-slate-500">Click "Video" on a concept to generate an explanation</p>
-        </div>
-      )}
       {generatedVideos.map((video) => (
         <div key={video.conceptId} className="border border-slate-200 rounded-lg overflow-hidden">
           <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">

@@ -266,19 +266,17 @@ if __name__ == "__main__":
           </div>
           
           {/* Code Block */}
-          <div className="relative">
-            <pre className="bg-slate-900 text-slate-100 p-4 overflow-x-auto text-sm">
+          <div className="relative bg-white p-4 border-t border-slate-200">
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs text-slate-800">
               <code>{codeItem.code}</code>
             </pre>
-            
-            {/* Copy Button */}
             <Button
               onClick={() => navigator.clipboard.writeText(codeItem.code)}
               variant="outline"
               size="sm"
-              className="absolute top-2 right-2 bg-white/90 hover:bg-white"
+              className="absolute top-3 right-3 bg-slate-100 hover:bg-slate-200 text-slate-600 h-7"
             >
-              📋 Copy
+              Copy
             </Button>
           </div>
         </div>

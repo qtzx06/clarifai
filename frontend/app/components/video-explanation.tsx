@@ -1,454 +1,209 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Download, Trash2, Loader2 } from "lucide-react"
-import { LoadingCard, LoadingProgress } from './loading-card'
+import { Download, Trash2, Bot, Sparkles, AlertTriangle, Server } from "lucide-react"
 
 const API_BASE = "http://localhost:8000"
+const WS_BASE = "ws://localhost:8000"
+
+// --- Helper Components ---
+
+const LogMessage = ({ message }: { message: string }) => {
+  const getMessageStyle = () => {
+    if (message.startsWith("--- PROMPT")) return "bg-blue-50 border-blue-200 text-blue-800"
+    if (message.startsWith("--- AI RESPONSE")) return "bg-green-50 border-green-200 text-green-800"
+    if (message.startsWith("--- Starting Attempt")) return "font-bold text-center my-2 text-slate-600"
+    if (message.startsWith("--- All")) return "bg-red-100 border-red-300 text-red-800 font-bold"
+    if (message.includes("STDERR") || message.includes("FATAL") || message.includes("Agent crashed")) return "bg-red-50 border-red-200 text-red-700"
+    return "bg-slate-50 text-slate-600"
+  }
+  
+  const getIcon = () => {
+    if (message.startsWith("--- PROMPT")) return <Bot className="h-5 w-5 mr-3 text-blue-600 flex-shrink-0" />
+    if (message.startsWith("--- AI RESPONSE")) return <Sparkles className="h-5 w-5 mr-3 text-green-600 flex-shrink-0" />
+    if (message.includes("STDERR") || message.includes("FATAL") || message.includes("Agent crashed")) return <AlertTriangle className="h-5 w-5 mr-3 text-red-600 flex-shrink-0" />
+    if (message.startsWith("---")) return null // No icon for attempt headers
+    return <Server className="h-5 w-5 mr-3 text-slate-500 flex-shrink-0" />
+  }
+
+  return (
+    <div className={`p-3 rounded-lg border text-xs my-1 flex items-start font-mono ${getMessageStyle()}`}>
+      {getIcon()}
+      <pre className="whitespace-pre-wrap break-words flex-grow overflow-x-auto">{message}</pre>
+    </div>
+  )
+}
+
+// --- Main Component ---
 
 interface VideoExplanationProps {
   paperId?: string
   videoGenerationRequest?: {conceptId: string, conceptName: string} | null
   onVideoGenerated?: () => void
-  videoGeneratingFor?: string | null
-}
-
-interface VideoStatus {
-  paper_id: string
-  video_status: string
-  video_path?: string
-  clips_count: number
-  clips_paths: string[]
-  has_video_config: boolean
 }
 
 interface GeneratedVideo {
   conceptId: string
   conceptName: string
   videoUrl: string
-  status: string
 }
 
 export function VideoExplanation({
   paperId,
   videoGenerationRequest,
   onVideoGenerated,
-  videoGeneratingFor
 }: VideoExplanationProps) {
+  const [currentGeneratingConcept, setCurrentGeneratingConcept] = useState<{id: string, name: string} | null>(null)
   const [generatedVideos, setGeneratedVideos] = useState<GeneratedVideo[]>([])
-  const [analysisStatus, setAnalysisStatus] = useState<string>('pending')
-  const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null)
+  const [logs, setLogs] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
-  const [generatingProgress, setGeneratingProgress] = useState(0)
-  const [generatingStep, setGeneratingStep] = useState('')
+  const [isFinished, setIsFinished] = useState(false)
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const ws = useRef<WebSocket | null>(null);
 
+  // Effect to establish and manage WebSocket connection
   useEffect(() => {
     if (paperId) {
-      setGeneratedVideos([])
-      setAnalysisStatus('pending')
-      setVideoStatus(null)
-      setIsGenerating(false)
+      ws.current = new WebSocket(`${WS_BASE}/ws/papers/${paperId}/logs`);
       
-      const checkStatus = async () => {
-        try {
-          const response = await fetch(`${API_BASE}/api/papers/${paperId}/status`)
-          if (response.ok) {
-            const data = await response.json()
-            setAnalysisStatus(data.analysis_status)
-          }
-        } catch (err) {
-          console.error('Failed to fetch status:', err)
+      ws.current.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'log') {
+          setLogs(prev => [...prev, data.message]);
         }
-      }
-      
-      checkStatus()
-      const interval = setInterval(checkStatus, 3000)
-      return () => clearInterval(interval)
-    } else {
-      setGeneratedVideos([])
-      setAnalysisStatus('pending')
-      setVideoStatus(null)
-      setIsGenerating(false)
+      };
+
+      ws.current.onclose = () => console.log("WebSocket disconnected.");
+      ws.current.onerror = (error) => console.error("WebSocket error:", error);
+
+      return () => ws.current?.close();
     }
-  }, [paperId])
+  }, [paperId]);
 
-  const fetchConceptVideoStatus = async (conceptId: string): Promise<any | null> => {
-    if (!paperId) return null
-
-    try {
-      const response = await fetch(`${API_BASE}/api/papers/${paperId}/concepts/${conceptId}/video/status`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch concept video status')
-      }
-
-      const data = await response.json()
-      return data
-    } catch (err) {
-      console.error('Failed to fetch concept video status:', err)
-      return null
-    }
-  }
-
-  const fetchVideoStatus = async (): Promise<VideoStatus | null> => {
-    if (!paperId) return null
-
-    try {
-      const response = await fetch(`${API_BASE}/api/papers/${paperId}/video/status`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch video status')
-      }
-
-      const data = await response.json()
-      setVideoStatus(data)
-      return data
-    } catch (err) {
-      console.error('Failed to fetch video status:', err)
-      return null
-    }
-  }
-
-  // Handle video generation requests from parent - WORKING VERSION
+  // Effect to start a new video generation
   useEffect(() => {
-    if (videoGenerationRequest) {
-      generateVideoForConcept(videoGenerationRequest.conceptId, videoGenerationRequest.conceptName)
+    if (videoGenerationRequest && paperId) {
+      setLogs([`--- Starting generation for '${videoGenerationRequest.conceptName}' ---`])
+      setIsGenerating(true)
+      setIsFinished(false)
+      setCurrentGeneratingConcept({id: videoGenerationRequest.conceptId, name: videoGenerationRequest.conceptName})
+      generateVideoForConcept(videoGenerationRequest.conceptId)
       onVideoGenerated?.()
     }
-  }, [videoGenerationRequest, onVideoGenerated])
+  }, [videoGenerationRequest, paperId])
+  
+  // --- THIS IS THE DEFINITIVE AUTO-SCROLL FIX ---
+  // It directly sets the scrollTop of the container, ensuring only it scrolls.
+  useEffect(() => {
+    const container = logsContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [logs]);
 
-  const generateVideoForConcept = async (conceptId: string, conceptName: string) => {
-    setIsGenerating(true)
-    setGeneratingProgress(0)
-    setGeneratingStep('Starting video generation...')
-    
+  // Effect to poll for the final status (completed/failed)
+  useEffect(() => {
+    if (!isGenerating || !paperId || !currentGeneratingConcept) return;
+
+    const pollFinalStatus = async () => {
+        try {
+            const response = await fetch(`${API_BASE}/api/papers/${paperId}/concepts/${currentGeneratingConcept.id}/video/status`);
+            if(response.ok) {
+                const data = await response.json();
+                if(data.video_status === 'completed' || data.video_status === 'failed') {
+                    setIsFinished(true);
+                    setIsGenerating(false);
+                     if (data.video_status === 'completed' && data.video_path) {
+                        const completedVideo: GeneratedVideo = {
+                          conceptId: currentGeneratingConcept.id,
+                          conceptName: currentGeneratingConcept.name,
+                          videoUrl: `${API_BASE}${data.video_path}`,
+                        }
+                        setGeneratedVideos(prev => [...prev, completedVideo])
+                      }
+                }
+            }
+        } catch (error) {
+            console.error("Failed to poll final status:", error);
+        }
+    };
+
+    const interval = setInterval(pollFinalStatus, 3000);
+    return () => clearInterval(interval);
+  }, [isGenerating, paperId, currentGeneratingConcept]);
+
+
+  const generateVideoForConcept = async (conceptId: string) => {
+    if (!paperId) return
     try {
-      // Start backend generation - SINGLE VIDEO MODE
-      console.log('🚀 Starting video generation for:', conceptName)
       const response = await fetch(`${API_BASE}/api/papers/${paperId}/concepts/${conceptId}/generate-video`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          concept_id: conceptId,
-          concept_name: conceptName,
-          quality: "medium_quality",
-          regenerate: false
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ concept_id: conceptId }),
       })
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        const errorMessage = errorData.detail || 'Failed to start video generation'
-        
-        if (response.status === 400) {
-          // Show error message to user - video already in progress
-          alert(`⚠️ ${errorMessage}`)
-          setIsGenerating(false)
-          return
-        }
-        
-        throw new Error(errorMessage)
+        setLogs(prev => [...prev, errorData.detail || 'Failed to start video generation'])
+        setIsFinished(true)
       }
-
-      console.log('✅ Backend generation started, now polling...')
-
-      // Progress simulation for Manim rendering (~45 seconds)
-      const runProgressSimulation = async () => {
-        const steps = [
-          { progress: 10, step: 'Analyzing concept complexity...', delay: 3000 },
-          { progress: 20, step: 'Generating optimized Manim code...', delay: 5000 },
-          { progress: 30, step: 'Setting up LaTeX environment...', delay: 4000 },
-          { progress: 45, step: 'Parsing mathematical expressions...', delay: 4000 },
-          { progress: 60, step: 'Creating scene animations...', delay: 6000 },
-          { progress: 75, step: 'Rendering video frames with Manim...', delay: 8000 },
-          { progress: 85, step: 'Processing mathematical visuals...', delay: 6000 },
-          { progress: 92, step: 'Optimizing video quality...', delay: 4000 },
-          { progress: 98, step: 'Finalizing video output...', delay: 3000 },
-          { progress: 100, step: 'Video done! About to play...', delay: 2000 }
-        ]
-        
-        for (const { progress, step, delay } of steps) {
-          await new Promise(resolve => setTimeout(resolve, delay))
-          setGeneratingProgress(progress)
-          setGeneratingStep(step)
-        }
-      }
-      
-      // Start progress simulation
-      runProgressSimulation()
-
-      // Poll for completion - BACK TO PAPER-LEVEL STATUS (SINGLE VIDEO MODE)
-      let attempts = 0
-      const maxAttempts = 60 // 5 minutes max
-      
-      const pollInterval = setInterval(async () => {
-        attempts++
-        console.log(`🔍 Polling attempt ${attempts}/${maxAttempts}`)
-        
-        const status = await fetchVideoStatus()
-        if (status) {
-          console.log(`📊 Paper Status: ${status.video_status}, Path: ${status.video_path}`)
-          
-          if (status.video_status === 'completed' && status.video_path) {
-            console.log('✅ Video generation completed!')
-            clearInterval(pollInterval)
-            setIsGenerating(false)
-            
-            // Add completed video to the array like Generated Code
-            const filename = status.video_path.split('/').pop() || status.video_path.split('\\').pop()
-            const videoId = `${conceptId}_${Date.now()}`
-            const videoUrl = `${API_BASE}/videos/${filename}`
-            
-            const completedVideo: GeneratedVideo = {
-              conceptId: videoId,
-              conceptName,
-              videoUrl: videoUrl,
-              status: 'completed'
-            }
-            
-            setGeneratedVideos(prev => [...prev, completedVideo])
-            console.log('🎉 Video added to generated videos array!')
-            
-          } else if (status.video_status === 'failed') {
-            console.error('❌ Video generation failed')
-            clearInterval(pollInterval)
-            setIsGenerating(false)
-            
-          } else if (attempts >= maxAttempts) {
-            console.error('⏰ Video generation timeout after 5 minutes')
-            clearInterval(pollInterval)
-            setIsGenerating(false)
-          }
-        }
-      }, 3000) // Poll every 3 seconds like clarifai-old
-      
     } catch (err) {
-      console.error('Failed to generate video:', err)
-      setIsGenerating(false)
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.'
+      setLogs(prev => [...prev, errorMessage])
+      setIsFinished(true)
     }
-  }
-
-  const downloadVideo = async (videoUrl: string, conceptName: string) => {
-    try {
-      const response = await fetch(videoUrl)
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.style.display = 'none'
-        a.href = url
-        a.download = `${conceptName.replace(/\s+/g, '_')}_explanation.mp4`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
-      }
-    } catch (error) {
-      console.error('Error downloading video:', error)
-    }
-  }
-
-  const removeVideo = (index: number) => {
-    setGeneratedVideos(prev => prev.filter((_, i) => i !== index))
   }
 
   if (!paperId) {
     return (
-      <div className="space-y-4">
-        <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
-          <div className="text-center text-muted-foreground">
-            <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl">🎬</span>
-            </div>
-            <p className="text-sm">
-              Upload a paper to see video explanations
-            </p>
-          </div>
-        </div>
+      <div className="relative aspect-video bg-slate-100 rounded-lg flex items-center justify-center">
+        <p className="text-sm text-slate-500">Upload a paper to generate video explanations</p>
       </div>
     )
   }
 
-  if (analysisStatus === 'processing') {
+  if (isGenerating || isFinished) {
     return (
-      <div className="space-y-4">
-        <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
-          <div className="text-center text-muted-foreground">
-            <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-            <p className="text-sm">
-              Analyzing paper...
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Video generation will be available after analysis completes
-            </p>
-          </div>
+      <div className="border border-slate-200 rounded-lg p-4 h-[520px] flex flex-col bg-slate-50">
+        <h3 className="text-lg font-semibold text-center mb-2 flex-shrink-0">
+          {isGenerating ? `Generating Video: ${currentGeneratingConcept?.name}` : `Finished: ${currentGeneratingConcept?.name}`}
+        </h3>
+        <div ref={logsContainerRef} className="bg-white rounded-lg p-3 flex-grow overflow-y-auto border">
+          {logs.map((log, index) => (
+            <LogMessage key={index} message={log} />
+          ))}
         </div>
+        {isFinished && (
+            <Button 
+              onClick={() => {setIsGenerating(false); setIsFinished(false)}} 
+              variant="outline"
+              className="w-full mt-2 flex-shrink-0 bg-white text-slate-600 hover:bg-slate-100"
+            >
+              Close
+            </Button>
+        )}
       </div>
     )
   }
 
-  if (analysisStatus !== 'completed') {
-    return (
-      <div className="space-y-4">
-        <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
-          <div className="text-center text-muted-foreground">
-            <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl">⏳</span>
-            </div>
-            <p className="text-sm">
-              Waiting for analysis to complete
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Video generation requires extracted concepts
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Show generating state with existing videos - SINGLE VIDEO MODE
-  if (isGenerating || videoGeneratingFor || videoStatus?.video_status === 'generating') {
-    return (
-      <div className="space-y-6">
-        {/* Show existing videos if any */}
-        {generatedVideos.map((video, index) => (
-          <div key={`${video.conceptId}-${index}`} className="border border-slate-200 rounded-lg overflow-hidden">
-            {/* Header - Clean like Generated Code */}
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <h4 className="font-medium text-slate-900">{video.conceptName}</h4>
-                  <p className="text-sm text-slate-600">Video example for the concept: {video.conceptName}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={() => downloadVideo(video.videoUrl, video.conceptName)}
-                    variant="ghost"
-                    size="sm"
-                    className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 p-1"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    onClick={() => removeVideo(index)}
-                    variant="ghost"
-                    size="sm"
-                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-            
-            {/* Video Player */}
-            <div className="relative">
-              <video
-                className="w-full aspect-video bg-black"
-                controls
-                autoPlay
-                muted
-                preload="auto"
-                onError={(e) => {
-                  console.error('Video loading error:', e)
-                  console.error('Video URL:', video.videoUrl)
-                }}
-              >
-                <source src={video.videoUrl} type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
-            </div>
-          </div>
-        ))}
-
-        {/* Loading Card for Current Generation */}
-        <LoadingCard
-          title="🔄 Generating video explanation..."
-          message={generatingStep || 'Starting video generation...'}
-          showSpinner={false}
-        >
-          <div className="mt-4 w-full max-w-xs">
-            <LoadingProgress
-              progress={generatingProgress}
-              message={generatingStep || 'Initializing...'}
-            />
-          </div>
-        </LoadingCard>
-      </div>
-    )
-  }
-
-  // Show generated videos or empty state
-  if (generatedVideos.length === 0) {
-    return (
-      <div className="space-y-4">
-        <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
-          <div className="text-center text-slate-500">
-            <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <span className="text-2xl">🎬</span>
-            </div>
-            <p className="text-sm">
-              {videoStatus?.video_status === 'failed'
-                ? 'Video generation failed. Try again.'
-                : 'Click "Video" to generate educational explanations'
-              }
-            </p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Show all generated videos
   return (
     <div className="space-y-6">
-      {generatedVideos.map((video, index) => (
-        <div key={`${video.conceptId}-${index}`} className="border border-slate-200 rounded-lg overflow-hidden">
-          {/* Header - Clean like Generated Code */}
-          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <h4 className="font-medium text-slate-900">{video.conceptName}</h4>
-                <p className="text-sm text-slate-600">Video example for the concept: {video.conceptName}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => downloadVideo(video.videoUrl, video.conceptName)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 p-1"
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-                <Button
-                  onClick={() => removeVideo(index)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-gray-400 hover:text-red-500 hover:bg-red-50 p-1"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+      {generatedVideos.length === 0 && (
+        <div className="relative aspect-video bg-slate-100 rounded-lg flex items-center justify-center">
+          <p className="text-sm text-slate-500">Click "Video" on a concept to generate an explanation</p>
+        </div>
+      )}
+      {generatedVideos.map((video) => (
+        <div key={video.conceptId} className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+            <h4 className="font-medium text-slate-900">{video.conceptName}</h4>
+            <div className="flex items-center gap-2">
+                <Button onClick={() => window.open(video.videoUrl, '_blank')} variant="ghost" size="sm"><Download className="h-4 w-4"/></Button>
+                <Button onClick={() => setGeneratedVideos(v => v.filter(v => v.conceptId !== video.conceptId))} variant="ghost" size="sm"><Trash2 className="h-4 w-4"/></Button>
             </div>
           </div>
-          
-          {/* Video Player */}
           <div className="relative">
-            <video
-              className="w-full aspect-video bg-black"
-              controls
-              autoPlay
-              muted
-              preload="auto"
-              onError={(e) => {
-                console.error('Video loading error:', e)
-                console.error('Video URL:', video.videoUrl)
-              }}
-            >
+            <video className="w-full aspect-video bg-black" controls autoPlay muted>
               <source src={video.videoUrl} type="video/mp4" />
               Your browser does not support the video tag.
             </video>

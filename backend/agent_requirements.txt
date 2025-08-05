@@ -5,9 +5,9 @@ langchain-core==0.1.48
 numpy<2
 
 # Video generation with Manim
-manim==0.17.3
+manim==0.18.1
 moviepy==1.0.3
 ffmpeg-python==0.2.0
 
 # Other dependencies
-python-dotenv==1.0.1
+

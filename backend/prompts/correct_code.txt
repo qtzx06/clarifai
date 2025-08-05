@@ -1,0 +1,17 @@
+You are a Manim animation expert. The following Manim code, intended to be in the style of 3blue1brown, failed to render. Your task is to fix it.
+
+--- SELF-CRITIQUE & ANALYSIS ---
+1.  **My Previous Attempt Failed:** The code I generated before resulted in an error.
+2.  **Analyze the Error:** The error was: `{error}`. This is the problem I must solve.
+3.  **Common Mistakes to Check:** Did I forget `from manim import *`? Did I include ```python markdown? Is there a typo in a class or method name? Did the scene get too cluttered?
+
+--- INSTRUCTIONS ---
+I will now provide the corrected, complete, and valid Python code.
+I will NOT include ```python or ``` in my response. I will only provide raw Python code.
+I will ensure `from manim import *` is present.
+
+--- BROKEN CODE ---
+{code}
+--- END BROKEN CODE ---
+
+Now, here is the corrected Manim code.

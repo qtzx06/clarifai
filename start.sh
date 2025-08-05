@@ -1,165 +1,120 @@
 #!/bin/bash
+set -e
+set -o pipefail
 
-echo "Starting Clarifai - Research Paper Analysis Tool"
-echo "================================================="
-
-# colors for output
+# --- Colors for output ---
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # no color
+NC='\033[0m' # No Color
 
-# function to check if command exists
+printf "%b\n" "${BLUE}Starting Clarifai - Research Paper Analysis Tool${NC}"
+printf "%b\n" "================================================="
+
+# --- Function to check if command exists ---
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# check dependencies
-echo -e "${BLUE}Checking dependencies...${NC}"
-
-if ! command_exists python3; then
-    echo -e "${RED}Python 3 is not installed. Please install Python 3.8+${NC}"
-    exit 1
-fi
-
-if ! command_exists node; then
-    echo -e "${RED}Node.js is not installed. Please install Node.js 18+${NC}"
-    exit 1
-fi
-
-if ! command_exists npm; then
-    echo -e "${RED}npm is not installed. Please install npm${NC}"
-    exit 1
-fi
-
-# Check for pyenv
+# --- Dependency Checks ---
+printf "\n%b\n" "${BLUE}Checking dependencies...${NC}"
 if ! command_exists pyenv; then
-    echo -e "${RED}pyenv is not installed. Please install it to continue.${NC}"
-    echo -e "${YELLOW}1. Run the automatic installer:${NC}"
-    echo -e "   curl https://pyenv.run | bash"
-    echo -e "${YELLOW}2. Add the following lines to your ~/.bashrc or ~/.zshrc file:${NC}"
-    echo -e '   export PYENV_ROOT="$HOME/.pyenv"'
-    echo -e '   [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"'
-    echo -e '   eval "$(pyenv init -)"'
-    echo -e "${YELLOW}3. Restart your shell:${NC}"
-    echo -e "   exec \"\$SHELL\""
-    echo -e "${YELLOW}Once pyenv is installed, please run ./start.sh again.${NC}"
+    printf "%b\n" "${RED}Error: pyenv is not installed. Please install it to continue.${NC}"
+    printf "%b\n" "${YELLOW}See installation instructions at https://github.com/pyenv/pyenv#installation${NC}"
     exit 1
 fi
+if ! command_exists node; then
+    printf "%b\n" "${RED}Node.js is not installed. Please install Node.js 18+${NC}"
+    exit 1
+fi
+if ! command_exists npm; then
+    printf "%b\n" "${RED}npm is not installed. Please install npm${NC}"
+    exit 1
+fi
+printf "%b\n" "${GREEN}Dependencies check passed.${NC}"
 
-echo -e "${GREEN}Dependencies check passed${NC}"
-
-# Agent environment setup
-echo -e "\n${BLUE}Setting up agent environment...${NC}"
+# --- Agent Environment Setup ---
+printf "\n%b\n" "${BLUE}Setting up agent environment...${NC}"
 AGENT_PYTHON_VERSION="3.12.4"
+
 if ! pyenv versions --bare | grep -q "^${AGENT_PYTHON_VERSION}$\"; then
-    echo -e "${YELLOW}Python ${AGENT_PYTHON_VERSION} not found. Installing with pyenv (this may take a few minutes)...${NC}"
-    if ! pyenv install ${AGENT_PYTHON_VERSION}; then
-        echo -e "${RED}Python ${AGENT_PYTHON_VERSION} installation failed.${NC}"
-        echo -e "${YELLOW}This is usually due to missing system build dependencies.${NC}"
-        echo -e "${YELLOW}Please install the required packages for your OS and try again.${NC}"
-        echo -e "${BLUE}See the pyenv wiki for details: https://github.com/pyenv/pyenv/wiki/Common-build-problems${NC}"
-        echo -e "${YELLOW}For Arch Linux, try:${NC} sudo pacman -S --needed base-devel openssl zlib xz tk"
-        exit 1
-    fi
+    printf "%b\n" "${YELLOW}Python ${AGENT_PYTHON_VERSION} not found. Attempting to install with pyenv...${NC}"
+    pyenv install ${AGENT_PYTHON_VERSION}
+    printf "%b\n" "${GREEN}Python ${AGENT_PYTHON_VERSION} installed successfully.${NC}"
 fi
 
 AGENT_ENV_DIR="backend/agent_env"
-if [ ! -d "$AGENT_ENV_DIR" ]; then
-    echo -e "${YELLOW}Creating agent virtual environment...${NC}"
-    "$(pyenv root)/versions/${AGENT_PYTHON_VERSION}/bin/python3" -m venv $AGENT_ENV_DIR
+AGENT_PYTHON_EXEC="$(pyenv root)/versions/${AGENT_PYTHON_VERSION}/bin/python3"
+
+printf "%b\n" "${YELLOW}Ensuring a clean environment by removing old agent directory...${NC}"
+rm -rf "$AGENT_ENV_DIR"
+
+printf "%b\n" "${YELLOW}Creating new agent virtual environment in ${AGENT_ENV_DIR}...${NC}"
+"$AGENT_PYTHON_EXEC" -m venv "$AGENT_ENV_DIR"
+
+AGENT_PIP_EXEC="$AGENT_ENV_DIR/bin/pip"
+if [ ! -f "$AGENT_PIP_EXEC" ]; then
+    printf "%b\n" "${RED}FATAL ERROR: pip executable not found at ${AGENT_PIP_EXEC} after creating virtual environment.${NC}"
+    exit 1
 fi
 
-echo -e "${YELLOW}Installing agent dependencies...${NC}"
-$AGENT_ENV_DIR/bin/pip install -r backend/agent_requirements.txt
+printf "%b\n" "${YELLOW}Installing agent dependencies from backend/agent_requirements.txt...${NC}"
+"$AGENT_PIP_EXEC" install -r backend/agent_requirements.txt
+printf "%b\n" "${GREEN}Agent environment setup complete.${NC}"
 
-
-
-
-
-
-
-# backend setup
-echo -e "\n${BLUE}Setting up backend...${NC}"
+# --- Backend Setup ---
+printf "\n%b\n" "${BLUE}Setting up backend...${NC}"
 cd backend
 
-# create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
-    echo -e "${YELLOW}Creating Python virtual environment...${NC}"
+    printf "%b\n" "${YELLOW}Creating main backend virtual environment...${NC}"
     python3 -m venv venv
 fi
 
-# activate virtual environment
-echo -e "${YELLOW}Activating virtual environment...${NC}"
+printf "%b\n" "${YELLOW}Activating and installing main backend dependencies...${NC}"
 source venv/bin/activate
-
-# install Python dependencies
-echo -e "${YELLOW}Installing Python dependencies...${NC}"
 pip install -r requirements.txt
 
-# create storage directories
+printf "%b\n" "${YELLOW}Creating storage directories...${NC}"
 mkdir -p storage media/clips media/videos
 
-# start backend server in background
-echo -e "${GREEN}Starting backend server...${NC}"
+printf "%b\n" "${GREEN}Starting backend server...${NC}"
 nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > ../backend.pid
+cd ..
 
-# wait for backend to start
-echo -e "${YELLOW}Waiting for backend to start...${NC}"
-sleep 3
+# --- Frontend Setup ---
+printf "\n%b\n" "${BLUE}Setting up frontend...${NC}"
+cd frontend
 
-# check if backend is running
-if kill -0 $BACKEND_PID 2>/dev/null; then
-    echo -e "${GREEN}Backend server started (PID: $BACKEND_PID)${NC}"
-else
-    echo -e "${RED}Backend server failed to start. Check backend.log for errors.${NC}"
-    exit 1
-fi
-
-# frontend setup
-echo -e "\n${BLUE}Setting up frontend...${NC}"
-cd ../frontend
-
-# install Node.js dependencies
-echo -e "${YELLOW}Installing Node.js dependencies...${NC}"
+printf "%b\n" "${YELLOW}Installing Node.js dependencies...${NC}"
 npm install
 
-# start frontend server
-echo -e "${GREEN}Starting frontend server...${NC}"
+printf "%b\n" "${GREEN}Starting frontend server...${NC}"
 nohup npm run dev > ../frontend.log 2>&1 &
 FRONTEND_PID=$!
 echo $FRONTEND_PID > ../frontend.pid
+cd ..
 
-# wait for frontend to start
-echo -e "${YELLOW}Waiting for frontend to start...${NC}"
+# --- Final Checks and Info ---
+printf "\n%b\n" "${YELLOW}Waiting for servers to initialize...${NC}"
 sleep 5
 
-# check if frontend is running
-if kill -0 $FRONTEND_PID 2>/dev/null; then
-    echo -e "${GREEN}Frontend server started (PID: $FRONTEND_PID)${NC}"
-else
-    echo -e "${RED}Frontend server failed to start. Check frontend.log for errors.${NC}"
+echo ""
+if ! kill -0 $BACKEND_PID 2>/dev/null; then
+    printf "%b\n" "${RED}Backend server failed to start. Check backend.log for errors.${NC}"
+    exit 1
+fi
+if ! kill -0 $FRONTEND_PID 2>/dev/null; then
+    printf "%b\n" "${RED}Frontend server failed to start. Check frontend.log for errors.${NC}"
     exit 1
 fi
 
-# success message
-echo -e "\n${GREEN}Success! Clarifai is now running!${NC}"
-echo -e "================================================="
-echo -e "${BLUE}Frontend:${NC}     http://localhost:3000"
-echo -e "${BLUE}Backend API:${NC}  http://localhost:8000"
-echo -e "${BLUE}API Docs:${NC}     http://localhost:8000/docs"
-echo -e "\n${YELLOW}Features:${NC}"
-echo -e "• Upload PDF research papers"
-echo -e "• AI-powered concept extraction"
-echo -e "• Educational video generation"
-echo -e "• Code implementation examples"
-echo -e "\n${BLUE}To stop the servers, run:${NC} ./stop.sh"
-echo -e "${BLUE}View logs:${NC} tail -f backend.log or frontend.log"
-
-# Return to original directory
-cd ..
-
-echo -e "\n${GREEN}Ready to analyze research papers!${NC}"
+printf "\n%b\n" "${GREEN}Success! Clarifai is now running!${NC}"
+printf "%s\n" "================================================="
+printf "%b\n" "${BLUE}Frontend:${NC}     http://localhost:3000"
+printf "%b\n" "${BLUE}Backend API:${NC}  http://localhost:8000/docs"
+printf "\n%b\n" "To stop the application, run: ${YELLOW}./stop.sh${NC}"
+printf "%b\n" "To view logs, run: ${YELLOW}tail -f backend.log${NC} or ${YELLOW}tail -f frontend.log${NC}"

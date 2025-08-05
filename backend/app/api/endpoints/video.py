@@ -5,33 +5,148 @@ import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
 
-from ...models.paper import Paper, Concept, VideoStatusResponse, VideoStatus, ConceptVideo
+from ...models.paper import Paper, Concept, VideoStatus, ConceptVideo
 from ...core.config import settings
 from .upload import papers_db
+
+# This will be set by main.py
+manager = None
 
 router = APIRouter()
 
 class GenerateVideoRequest(BaseModel):
     concept_id: str = ""
-    concept_name: str = ""
-    quality: str = "medium_quality"
-    regenerate: bool = False
 
-async def run_agent_script(concept_description: str, output_path: str) -> Dict[str, Any]:
-    # Paths are now relative to the 'backend' directory where uvicorn is run
-    agent_script_path = "run_agent.py"
-    python_executable = "agent_env/bin/python"
+async def run_agent_script(paper_id: str, concept_name: str, concept_description: str, output_dir: str) -> Dict[str, Any]:
+    project_root = Path(__file__).resolve().parents[4]
+    agent_script_path = project_root / "backend/run_agent.py"
+    python_executable = project_root / "backend/agent_env/bin/python"
+    api_key = settings.GEMINI_API_KEY
+
+    if not api_key:
+        return {"success": False, "error": "GEMINI_API_KEY not found in backend environment."}
 
     cmd = [
-        python_executable,
-        agent_script_path,
+        str(python_executable),
+        str(agent_script_path),
+        concept_name,
         concept_description,
+        output_dir,
+        api_key,
+    ]
+    
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    final_result = None
+    
+    async for line in process.stdout:
+        decoded_line = line.decode('utf-8').strip()
+        
+        if decoded_line.startswith("LOG: "):
+            log_message = decoded_line[5:]
+            if manager:
+                await manager.send_log(paper_id, json.dumps({"type": "log", "message": log_message}))
+        elif decoded_line.startswith("RESULT: "):
+            result_json = decoded_line[8:]
+            try:
+                final_result = json.loads(result_json)
+            except json.JSONDecodeError:
+                final_result = {"success": False, "error": "Failed to decode agent's final result."}
+    
+    await process.wait()
+    
+    if final_result:
+        return final_result
+
+    stderr_output = await process.stderr.read()
+    if stderr_output:
+        error_message = f"Agent crashed without a final result. STDERR:\n{stderr_output.decode()}"
+        if manager:
+            await manager.send_log(paper_id, json.dumps({"type": "log", "message": error_message}))
+        return {"success": False, "error": error_message}
+
+    return {"success": False, "error": "Agent finished without providing a result."}
+
+
+async def generate_video_background(paper_id: str, concept_id: str, concept: Concept):
+    paper = papers_db.get(paper_id)
+    if not paper: return
+    concept_video = paper.concept_videos.get(concept_id)
+    if not concept_video: return
+
+    async def log(message: str):
+        print(message)
+        log_entry = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
+        concept_video.logs.append(log_entry)
+        if manager:
+            await manager.send_log(paper_id, json.dumps({"type": "log", "message": log_entry}))
+
+    try:
+        await log("Handing off to agent for video generation...")
+        
+        # Use absolute paths for media directories
+        project_root = Path(__file__).resolve().parents[4]
+        clips_dir = project_root / "backend/clips"
+        videos_dir = project_root / "backend/videos"
+        
+        output_dir = clips_dir / f"{paper_id}_{concept_id}"
+        os.makedirs(output_dir, exist_ok=True)
+
+        result = await run_agent_script(paper_id, concept.name, concept.description, str(output_dir))
+        
+        if result.get("success"):
+            clip_paths = result.get("clip_paths", [])
+            await log("Agent finished successfully. Stitching clips...")
+            final_video_path = await stitch_clips_simple(f"{paper_id}_{concept_id}", clip_paths, str(videos_dir))
+
+            if final_video_path:
+                # Create a relative path suitable for serving static files
+                relative_video_path = os.path.relpath(final_video_path, os.path.abspath("backend"))
+                await log(f"Video successfully stitched: {relative_video_path}")
+                concept_video.video_path = f"/{relative_video_path}"
+                concept_video.status = VideoStatus.COMPLETED
+            else:
+                await log("Stitching failed.")
+                concept_video.status = VideoStatus.FAILED
+        else:
+            await log("Agent failed to generate video.")
+            concept_video.status = VideoStatus.FAILED
+
+    except Exception as e:
+        await log(f"An unexpected error occurred: {e}")
+        concept_video.status = VideoStatus.FAILED
+
+async def stitch_clips_simple(file_prefix: str, clip_paths: List[str], videos_dir: str) -> Optional[str]:
+    if not clip_paths:
+        return None
+    
+    os.makedirs(videos_dir, exist_ok=True)
+    
+    output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+    concat_file_path = os.path.join(videos_dir, f"{file_prefix}_concat.txt")
+
+    with open(concat_file_path, "w", encoding="utf-8") as f:
+        for path in clip_paths:
+            abs_path = os.path.abspath(path)
+            safe_path = abs_path.replace('\\', '/').replace("'", "'\\''")
+            f.write(f"file '{safe_path}'\n")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concat_file_path,
+        "-c", "copy",
         output_path,
     ]
+    
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -39,95 +154,14 @@ async def run_agent_script(concept_description: str, output_path: str) -> Dict[s
     )
     stdout, stderr = await process.communicate()
 
-    if stderr:
-        print(f"Agent script error: {stderr.decode()}")
-
-    try:
-        return json.loads(stdout.decode())
-    except json.JSONDecodeError:
-        return {"success": False, "error": "Failed to decode agent response"}
-
-async def generate_video_background(paper_id: str, concept_id: str, concept: Concept, quality: str):
-    paper = papers_db.get(paper_id)
-    if not paper:
-        return
-
-    concept_video = paper.concept_videos.get(concept_id)
-    if not concept_video:
-        return
-
-    def log(message: str):
-        print(message)
-        concept_video.logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
-
-    try:
-        log("Starting agentic video generation process.")
-        
-        output_dir = os.path.join(settings.CLIPS_DIR, f"{paper_id}_{concept_id}")
-        os.makedirs(output_dir, exist_ok=True)
-
-        sentences = [s.strip() for s in concept.description.split('.') if s.strip()]
-        clip_paths = []
-
-        for i, sentence in enumerate(sentences):
-            log(f"Generating clip {i+1}/{len(sentences)}: {sentence}")
-            output_path = os.path.join(output_dir, f"clip_{i}.mp4")
-            result = await run_agent_script(sentence, output_path)
-            
-            concept_video.logs.extend(result.get("logs", []))
-
-            if result.get("success"):
-                log(f"Clip {i+1} generated successfully.")
-                clip_paths.append(result["output_path"])
-            else:
-                log(f"Failed to generate clip {i+1}. Aborting.")
-                concept_video.status = VideoStatus.FAILED
-                return
-
-        log("Stitching clips together...")
-        final_video_path = await stitch_clips_simple(f"{paper_id}_{concept_id}", clip_paths)
-
-        if final_video_path:
-            log(f"Video successfully stitched: {final_video_path}")
-            concept_video.video_path = final_video_path
-            concept_video.status = VideoStatus.COMPLETED
-        else:
-            log("Stitching failed.")
-            concept_video.status = VideoStatus.FAILED
-
-    except Exception as e:
-        log(f"An unexpected error occurred: {e}")
-        concept_video.status = VideoStatus.FAILED
-
-async def stitch_clips_simple(file_prefix: str, clip_paths: List[str]) -> Optional[str]:
-    if not clip_paths:
+    if process.returncode != 0:
+        print(f"--- FFMPEG STITCHING FAILED ---")
+        print(f"STDOUT:\n{stdout.decode()}")
+        print(f"STDERR:\n{stderr.decode()}")
         return None
-    
-    output_path = os.path.join(settings.VIDEO_DIR, f"{file_prefix}_final.mp4")
-    concat_file = os.path.join(settings.VIDEO_DIR, f"{file_prefix}_concat.txt")
 
-    with open(concat_file, "w") as f:
-        for path in clip_paths:
-            f.write(f"file '{os.path.abspath(path)}'\n")
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", concat_file,
-        "-c", "copy",
-        output_path,
-    ]
-    process = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    await process.communicate()
-
-    os.remove(concat_file)
-
-    return output_path if process.returncode == 0 else None
+    os.remove(concat_file_path)
+    return output_path
 
 @router.post("/papers/{paper_id}/concepts/{concept_id}/generate-video")
 async def generate_video_for_concept(
@@ -146,7 +180,7 @@ async def generate_video_for_concept(
         raise HTTPException(status_code=404, detail="Concept not found")
 
     if any(cv.status == VideoStatus.GENERATING for cv in paper.concept_videos.values()):
-        raise HTTPException(status_code=400, detail="A video is already being generated.")
+        raise HTTPException(status_code=400, detail="A video is already being generated for this paper.")
 
     paper.concept_videos[concept_id] = ConceptVideo(
         concept_id=concept_id,
@@ -160,7 +194,6 @@ async def generate_video_for_concept(
         paper_id,
         concept_id,
         concept,
-        request.quality or "medium_quality"
     )
 
     return {"message": "Video generation started"}
@@ -174,7 +207,7 @@ async def get_concept_video_status(paper_id: str, concept_id: str) -> Dict[str, 
     concept_video = paper.concept_videos.get(concept_id)
 
     if not concept_video:
-        return {"video_status": "not_started"}
+        return {"video_status": "not_started", "logs": []}
 
     return {
         "video_status": concept_video.status.value,

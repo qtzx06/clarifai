@@ -34,10 +34,12 @@ export function CodeImplementation({
 
   useEffect(() => {
     if (paperId) {
+      // Reset state for new paper
       setGeneratedCodes([])
       setAnalysisStatus('pending')
       setLoading(false)
       
+      // Check analysis status
       const checkStatus = async () => {
         try {
           const response = await fetch(`http://localhost:8000/api/papers/${paperId}/status`)
@@ -54,12 +56,14 @@ export function CodeImplementation({
       const interval = setInterval(checkStatus, 3000)
       return () => clearInterval(interval)
     } else {
+      // Reset when no paper
       setGeneratedCodes([])
       setAnalysisStatus('pending')
       setLoading(false)
     }
   }, [paperId])
 
+  // Handle code generation requests from parent
   useEffect(() => {
     if (codeGenerationRequest) {
       generateCodeForConcept(codeGenerationRequest.conceptId, codeGenerationRequest.conceptName)
@@ -73,23 +77,66 @@ export function CodeImplementation({
     setGeneratingStep('Analyzing concept...')
     
     try {
-      const response = await fetch(`http://localhost:8000/api/papers/${paperId}/concepts/${conceptId}/implement`, {
-        method: 'POST',
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const newCode: GeneratedCode = {
-          conceptId,
-          conceptName,
-          language: data.language,
-          description: data.description,
-          code: data.code,
-        };
-        setGeneratedCodes(prev => [...prev, newCode]);
-      } else {
-        console.error("Failed to generate code");
+      // Simulate progress updates during code generation
+      const progressSteps = [
+        { progress: 25, step: 'Understanding concept requirements...', delay: 800 },
+        { progress: 50, step: 'Generating Python implementation...', delay: 1200 },
+        { progress: 75, step: 'Adding documentation and examples...', delay: 800 },
+        { progress: 100, step: 'Code generation complete!', delay: 400 }
+      ]
+      
+      let cumulativeDelay = 0
+      for (const { progress, step, delay } of progressSteps) {
+        await new Promise(resolve => setTimeout(resolve, delay))
+        setGeneratingProgress(progress)
+        setGeneratingStep(step)
       }
+      
+      const mockCode: GeneratedCode = {
+        conceptId,
+        conceptName,
+        language: "python",
+        description: `Implementation example for the concept: ${conceptName}`,
+        code: `# ${conceptName} Implementation
+# This is a generated code example for understanding ${conceptName}
+
+class ${conceptName.replace(/\s+/g, '')}:
+    """
+    A class to demonstrate ${conceptName} concepts.
+    """
+    
+    def __init__(self):
+        self.initialized = True
+        print(f"${conceptName} implementation initialized")
+    
+    def process(self, data):
+        """
+        Process data using ${conceptName} methodology
+        """
+        # Implementation details would go here
+        return f"Processed data using ${conceptName}"
+    
+    def analyze(self):
+        """
+        Analyze the concept implementation
+        """
+        return {
+            "concept": "${conceptName}",
+            "status": "implemented",
+            "ready": True
+        }
+
+# Example usage
+if __name__ == "__main__":
+    concept = ${conceptName.replace(/\s+/g, '')}()
+    result = concept.process("sample_data")
+    analysis = concept.analyze()
+    print(f"Result: {result}")
+    print(f"Analysis: {analysis}")
+`
+      }
+      
+      setGeneratedCodes(prev => [...prev, mockCode])
     } catch (err) {
       console.error('Failed to generate code:', err)
     } finally {
@@ -134,14 +181,42 @@ export function CodeImplementation({
     )
   }
 
+  if (analysisStatus !== 'completed') {
+    return (
+      <div className="space-y-4">
+        <div className="relative aspect-video bg-slate-100 rounded-lg overflow-hidden flex items-center justify-center">
+          <div className="text-center text-muted-foreground">
+            <div className="w-16 h-16 bg-slate-200 rounded-lg flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">⏳</span>
+            </div>
+            <p className="text-sm">
+              Waiting for analysis to complete
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              Code generation requires extracted concepts
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (generatedCodes.length === 0) {
+    // Show generating state if code is being generated
     if (loading && codeGeneratingFor) {
       return (
         <LoadingCard
           title="🔄 Generating code implementation..."
           message={generatingStep}
-          showSpinner={true}
-        />
+          showSpinner={false}
+        >
+          <div className="mt-4 w-full max-w-xs">
+            <LoadingProgress
+              progress={generatingProgress}
+              message={generatingStep}
+            />
+          </div>
+        </LoadingCard>
       )
     }
     
@@ -164,7 +239,7 @@ export function CodeImplementation({
   return (
     <div className="space-y-6">
       {generatedCodes.map((codeItem, index) => (
-        <div key={`${codeItem.conceptId}-${index}`} className="border border-slate-200 rounded-lg overflow-hidden group">
+        <div key={`${codeItem.conceptId}-${index}`} className="border border-slate-200 rounded-lg overflow-hidden">
           <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
             <div className="flex items-center justify-between">
               <div className="flex-1">
@@ -181,7 +256,7 @@ export function CodeImplementation({
                   }}
                   variant="ghost"
                   size="sm"
-                  className="ml-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="ml-2 text-gray-400 hover:text-red-500"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -208,10 +283,20 @@ export function CodeImplementation({
       {loading && generatedCodes.length > 0 && (
         <LoadingCard
           title="🔄 Generating additional code..."
-          message="Requesting new implementation..."
-          showSpinner={true}
-        />
+          message={generatingStep}
+          showSpinner={false}
+        >
+          <div className="mt-4 w-full max-w-xs">
+            <LoadingProgress
+              progress={generatingProgress}
+              message={generatingStep}
+            />
+          </div>
+        </LoadingCard>
       )}
     </div>
   )
 }
+
+// Export the code generation function for use in parent component
+export { type CodeImplementationProps }

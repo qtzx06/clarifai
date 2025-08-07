@@ -36,7 +36,7 @@ Before you begin, ensure you have the following dependencies installed on your s
 
 ### 2. Backend Dependencies
 
-- **Python 3.11+**: The application requires a modern version of Python.
+- **Python 3.12 & 3.13**: The application requires two different Python versions. The main backend uses Python 3.13, while the video generation agent requires Python 3.12.
 - **`uv`**: A fast Python package installer and resolver. 
   - **Installation**: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **`ffmpeg`**:

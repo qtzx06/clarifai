@@ -41,11 +41,14 @@ AGENT_ENV_DIR="backend/agent_env"
 printf "%b\n" "${YELLOW}Ensuring a clean environment by removing old agent directory...${NC}"
 rm -rf "$AGENT_ENV_DIR"
 
-printf "%b\n" "${YELLOW}Creating new agent virtual environment in ${AGENT_ENV_DIR}...${NC}"
-"uv" venv "$AGENT_ENV_DIR"
+printf "%b\n" "${YELLOW}Creating new agent virtual environment in ${AGENT_ENV_DIR} with Python 3.12...${NC}"
+uv venv --python 3.12 "$AGENT_ENV_DIR"
+
+printf "%b\n" "${YELLOW}Ensuring pip is installed in the agent environment...${NC}"
+"$AGENT_ENV_DIR/bin/python" -m ensurepip --upgrade
 
 printf "%b\n" "${YELLOW}Installing agent dependencies from backend/agent_requirements.txt...${NC}"
-"uv" pip install --python "$AGENT_ENV_DIR/bin/python" -r backend/agent_requirements.txt
+"$AGENT_ENV_DIR/bin/python" -m pip install -r backend/agent_requirements.txt
 printf "%b\n" "${GREEN}Agent environment setup complete.${NC}"
 
 # --- Backend Setup ---
@@ -58,14 +61,13 @@ if [ ! -d "venv" ]; then
 fi
 
 printf "%b\n" "${YELLOW}Activating and installing main backend dependencies...${NC}"
-source venv/bin/activate
-"uv" pip install -r requirements.txt
+source venv/bin/activate && uv pip install -r requirements.txt
 
 printf "%b\n" "${YELLOW}Creating storage directories...${NC}"
 mkdir -p storage clips videos
 
 printf "%b\n" "${GREEN}Starting backend server...${NC}"
-nohup uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+nohup ./venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > ../backend.pid
 cd ..

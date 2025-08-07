@@ -178,9 +178,9 @@ JSON object:"""
             if response:
                 try:
                     # Try to parse JSON response
-                    if '{' in response and '}' in response:
-                        start = response.find('{')
-                        end = response.rfind('}') + 1
+                    if '{{' in response and '}}' in response:
+                        start = response.find('{{')
+                        end = response.rfind('}}') + 1
                         json_str = response[start:end]
                         concept_data = json.loads(json_str)
                         
@@ -397,9 +397,9 @@ JSON:"""
             if response:
                 try:
                     # Try to parse JSON response
-                    if '{' in response and '}' in response:
-                        start = response.find('{')
-                        end = response.rfind('}') + 1
+                    if '{{' in response and '}}' in response:
+                        start = response.find('{{')
+                        end = response.rfind('}}') + 1
                         json_str = response[start:end]
                         metadata = json.loads(json_str)
                         
@@ -617,17 +617,18 @@ class IntroScene(Scene):
 
         try:
             prompt = f'''
-Your task is to write a concise Python script that demonstrates the concept of "{concept_name}".
+Your task is to write a **single, concise** Python script that demonstrates the concept of "{concept_name}".
 
 **Concept Description:** {concept_description}
 
 **Requirements:**
-1.  The script must be a complete, runnable Python file.
-2.  The implementation should be clear and practical, but not overly long.
-3.  Keep comments brief and to the point.
-4.  Include a simple `if __name__ == "__main__":` block to show how the code is used.
-5.  Use only standard Python libraries.
-6.  Your final output should be only the raw Python code, with no markdown formatting.
+1.  **Single Script:** You must generate only one Python script. Do not provide multiple alternatives.
+2.  **Concise:** The implementation should be clear, practical, and not overly long.
+3.  **Runnable:** The script must be a complete, runnable Python file.
+4.  **Comments:** Keep comments brief and to the point.
+5.  **Example Usage:** Include a simple `if __name__ == "__main__":` block to show how the code is used.
+6.  **Standard Libraries:** Use only standard Python libraries.
+7.  **Raw Code Only:** Your final output must be only the raw Python code, with no markdown formatting or explanations outside of the code's comments.
 '''
 
             response = await self._call_gemini_api(prompt)

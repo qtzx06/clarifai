@@ -63,4 +63,13 @@ stop_process() {
 stop_process "Backend" "backend.pid"
 stop_process "Frontend" "frontend.pid"
 
+# Fallback to kill any remaining processes
+printf "\n%b\n" "${YELLOW}Running cleanup...${NC}"
+if pkill -f "uvicorn app.main:app"; then
+    printf "%b\n" "${GREEN}Cleaned up stray backend processes.${NC}"
+fi
+if pkill -f "npm run dev"; then
+    printf "%b\n" "${GREEN}Cleaned up stray frontend processes.${NC}"
+fi
+
 printf "\n%b\n" "${GREEN}Shutdown complete.${NC}"

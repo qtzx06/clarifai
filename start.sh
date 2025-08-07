@@ -19,9 +19,9 @@ command_exists() {
 
 # --- Dependency Checks ---
 printf "\n%b\n" "${BLUE}Checking dependencies...${NC}"
-if ! command_exists pyenv; then
-    printf "%b\n" "${RED}Error: pyenv is not installed. Please install it to continue.${NC}"
-    printf "%b\n" "${YELLOW}See installation instructions at https://github.com/pyenv/pyenv#installation${NC}"
+if ! command_exists uv; then
+    printf "%b\n" "${RED}Error: uv is not installed. Please install it to continue.${NC}"
+    printf "%b\n" "${YELLOW}See installation instructions at https://github.com/astral-sh/uv${NC}"
     exit 1
 fi
 if ! command_exists node; then
@@ -36,31 +36,16 @@ printf "%b\n" "${GREEN}Dependencies check passed.${NC}"
 
 # --- Agent Environment Setup ---
 printf "\n%b\n" "${BLUE}Setting up agent environment...${NC}"
-AGENT_PYTHON_VERSION="3.12.4"
-
-if ! pyenv versions --bare | grep -q "^${AGENT_PYTHON_VERSION}$"; then
-    printf "%b\n" "${YELLOW}Python ${AGENT_PYTHON_VERSION} not found. Attempting to install with pyenv...${NC}"
-    pyenv install ${AGENT_PYTHON_VERSION}
-    printf "%b\n" "${GREEN}Python ${AGENT_PYTHON_VERSION} installed successfully.${NC}"
-fi
-
 AGENT_ENV_DIR="backend/agent_env"
-AGENT_PYTHON_EXEC="$(pyenv root)/versions/${AGENT_PYTHON_VERSION}/bin/python3"
 
 printf "%b\n" "${YELLOW}Ensuring a clean environment by removing old agent directory...${NC}"
 rm -rf "$AGENT_ENV_DIR"
 
 printf "%b\n" "${YELLOW}Creating new agent virtual environment in ${AGENT_ENV_DIR}...${NC}"
-"$AGENT_PYTHON_EXEC" -m venv "$AGENT_ENV_DIR"
-
-AGENT_PIP_EXEC="$AGENT_ENV_DIR/bin/pip"
-if [ ! -f "$AGENT_PIP_EXEC" ]; then
-    printf "%b\n" "${RED}FATAL ERROR: pip executable not found at ${AGENT_PIP_EXEC} after creating virtual environment.${NC}"
-    exit 1
-fi
+"uv" venv "$AGENT_ENV_DIR"
 
 printf "%b\n" "${YELLOW}Installing agent dependencies from backend/agent_requirements.txt...${NC}"
-"$AGENT_PIP_EXEC" install -r backend/agent_requirements.txt
+"uv" pip install --python "$AGENT_ENV_DIR/bin/python" -r backend/agent_requirements.txt
 printf "%b\n" "${GREEN}Agent environment setup complete.${NC}"
 
 # --- Backend Setup ---
@@ -69,12 +54,12 @@ cd backend
 
 if [ ! -d "venv" ]; then
     printf "%b\n" "${YELLOW}Creating main backend virtual environment...${NC}"
-    python3 -m venv venv
+    uv venv venv
 fi
 
 printf "%b\n" "${YELLOW}Activating and installing main backend dependencies...${NC}"
 source venv/bin/activate
-pip install -r requirements.txt
+"uv" pip install -r requirements.txt
 
 printf "%b\n" "${YELLOW}Creating storage directories...${NC}"
 mkdir -p storage clips videos

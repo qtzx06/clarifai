@@ -22,7 +22,7 @@ Clarifai is a full-stack web application designed to deconstruct complex researc
 - **AI/ML**: Google Gemini Flash, LangChain
 - **Video Generation**: Manim Community v0.18.1
 - **Video Processing**: ffmpeg
-- **Environment Management**: `pyenv` for isolated Python versions, `venv` and `npm` for dependency management.
+- **Environment Management**: `uv` for isolated Python environments, `npm` for dependency management.
 
 ---
 
@@ -36,14 +36,12 @@ Before you begin, ensure you have the following dependencies installed on your s
 
 ### 2. Backend Dependencies
 
-- **Python 3.12.4**: The application requires this specific version of Python for the video generation agent. We strongly recommend using `pyenv` to manage Python versions.
-- **`pyenv`**:
-  - **macOS**: `brew install pyenv`
-  - **Linux**: Run `curl https://pyenv.run | bash` and follow the on-screen instructions to add it to your shell's startup file (e.g., `.bashrc`, `.zshrc`).
-  - **Windows**: Use `pyenv-win`. Follow the installation guide at [https://github.com/pyenv-win/pyenv-win](https://github.com/pyenv-win/pyenv-win).
+- **Python 3.11+**: The application requires a modern version of Python.
+- **`uv`**: A fast Python package installer and resolver. 
+  - **Installation**: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **`ffmpeg`**:
   - **macOS**: `brew install ffmpeg`
-  - **Linux**: `sudo apt-get update && sudo apt-get install ffmpeg`
+  - **Linux**: `sudo apt-get update && sudo apt-get install ffmpeg` or `sudo pacman -S ffmpeg`
   - **Windows**: `choco install ffmpeg` or `scoop install ffmpeg`
 
 ### 3. Frontend Dependencies
@@ -83,9 +81,8 @@ Before you begin, ensure you have the following dependencies installed on your s
     ./start.sh
     ```
     This script will:
-    - Install the correct Python version for the agent using `pyenv`.
-    - Create and populate two separate Python virtual environments (`./backend/venv` and `./backend/agent_env`).
-    - Install all Python dependencies using `pip`.
+    - Create and populate two separate Python virtual environments (`./backend/venv` and `./backend/agent_env`) using `uv`.
+    - Install all Python dependencies using `uv pip`.
     - Install all Node.js dependencies using `npm`.
     - Create the necessary storage directories (`/backend/clips`, `/backend/videos`).
     - Start the backend and frontend servers in the background.

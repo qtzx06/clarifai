@@ -4,6 +4,7 @@ Analysis API endpoints for paper concept extraction and clarification
 import uuid
 from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from ...models.paper import ConceptResponse, Concept
@@ -310,6 +311,29 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
     except Exception as e:
         print(f"Additional concept generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Additional concept generation failed: {str(e)}")
+
+@router.post("/papers/{paper_id}/concepts/{concept_name}/implement", response_class=PlainTextResponse)
+async def get_code_implementation(
+    paper_id: str,
+    concept_name: str,
+) -> str:
+    """
+    Generate a Python code implementation for a given concept.
+    """
+    if paper_id not in papers_db:
+        raise HTTPException(status_code=404, detail="Paper not found")
+
+    paper = papers_db[paper_id]
+    concept = next((c for c in paper.concepts if c.name == concept_name), None)
+    if not concept:
+        raise HTTPException(status_code=404, detail="Concept not found")
+
+    try:
+        gemini_service = GeminiService()
+        code = await gemini_service.generate_python_implementation(concept.name, concept.description)
+        return code
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
 
 @router.get("/papers/{paper_id}/summary")
 async def get_paper_summary(paper_id: str) -> Dict[str, Any]:

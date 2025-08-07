@@ -29,8 +29,7 @@ export function CodeImplementation({
   const [generatedCodes, setGeneratedCodes] = useState<GeneratedCode[]>([])
   const [analysisStatus, setAnalysisStatus] = useState<string>('pending')
   const [loading, setLoading] = useState(false)
-  const [generatingProgress, setGeneratingProgress] = useState(0)
-  const [generatingStep, setGeneratingStep] = useState('')
+  const [generatingConceptName, setGeneratingConceptName] = useState<string | null>(null)
 
   useEffect(() => {
     if (paperId) {
@@ -38,6 +37,7 @@ export function CodeImplementation({
       setGeneratedCodes([])
       setAnalysisStatus('pending')
       setLoading(false)
+      setGeneratingConceptName(null)
       
       // Check analysis status
       const checkStatus = async () => {
@@ -60,87 +60,53 @@ export function CodeImplementation({
       setGeneratedCodes([])
       setAnalysisStatus('pending')
       setLoading(false)
+      setGeneratingConceptName(null)
     }
   }, [paperId])
 
   // Handle code generation requests from parent
   useEffect(() => {
-    if (codeGenerationRequest) {
-      generateCodeForConcept(codeGenerationRequest.conceptId, codeGenerationRequest.conceptName)
-      onCodeGenerated?.()
+    const generate = async () => {
+      if (codeGenerationRequest) {
+        await generateCodeForConcept(codeGenerationRequest.conceptId, codeGenerationRequest.conceptName)
+        onCodeGenerated?.()
+      }
     }
+    generate()
   }, [codeGenerationRequest, onCodeGenerated])
 
   const generateCodeForConcept = async (conceptId: string, conceptName: string) => {
     setLoading(true)
-    setGeneratingProgress(0)
-    setGeneratingStep('Analyzing concept...')
+    setGeneratingConceptName(conceptName)
     
     try {
-      // Simulate progress updates during code generation
-      const progressSteps = [
-        { progress: 25, step: 'Understanding concept requirements...', delay: 800 },
-        { progress: 50, step: 'Generating Python implementation...', delay: 1200 },
-        { progress: 75, step: 'Adding documentation and examples...', delay: 800 },
-        { progress: 100, step: 'Code generation complete!', delay: 400 }
-      ]
-      
-      let cumulativeDelay = 0
-      for (const { progress, step, delay } of progressSteps) {
-        await new Promise(resolve => setTimeout(resolve, delay))
-        setGeneratingProgress(progress)
-        setGeneratingStep(step)
+      const response = await fetch(`http://localhost:8000/api/papers/${paperId}/concepts/${conceptName}/implement`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate code: ${errorText}`);
       }
-      
-      const mockCode: GeneratedCode = {
+
+      const code = await response.text();
+
+      const newCode: GeneratedCode = {
         conceptId,
         conceptName,
         language: "python",
-        description: `Implementation example for the concept: ${conceptName}`,
-        code: `# ${conceptName} Implementation
-# This is a generated code example for understanding ${conceptName}
-
-class ${conceptName.replace(/\s+/g, '')}:
-    """
-    A class to demonstrate ${conceptName} concepts.
-    """
-    
-    def __init__(self):
-        self.initialized = True
-        print(f"${conceptName} implementation initialized")
-    
-    def process(self, data):
-        """
-        Process data using ${conceptName} methodology
-        """
-        # Implementation details would go here
-        return f"Processed data using ${conceptName}"
-    
-    def analyze(self):
-        """
-        Analyze the concept implementation
-        """
-        return {
-            "concept": "${conceptName}",
-            "status": "implemented",
-            "ready": True
-        }
-
-# Example usage
-if __name__ == "__main__":
-    concept = ${conceptName.replace(/\s+/g, '')}()
-    result = concept.process("sample_data")
-    analysis = concept.analyze()
-    print(f"Result: {result}")
-    print(f"Analysis: {analysis}")
-`
+        description: `Implementation example for: ${conceptName}`,
+        code,
       }
       
-      setGeneratedCodes(prev => [...prev, mockCode])
+      // Add new code to the top of the list
+      setGeneratedCodes(prev => [newCode, ...prev])
     } catch (err) {
       console.error('Failed to generate code:', err)
+      // Optionally, display an error message to the user
     } finally {
       setLoading(false)
+      setGeneratingConceptName(null)
     }
   }
 
@@ -203,20 +169,13 @@ if __name__ == "__main__":
 
   if (generatedCodes.length === 0) {
     // Show generating state if code is being generated
-    if (loading && codeGeneratingFor) {
+    if (loading && generatingConceptName) {
       return (
         <LoadingCard
-          title="🔄 Generating code implementation..."
-          message={generatingStep}
-          showSpinner={false}
-        >
-          <div className="mt-4 w-full max-w-xs">
-            <LoadingProgress
-              progress={generatingProgress}
-              message={generatingStep}
-            />
-          </div>
-        </LoadingCard>
+          title={`🔄 Generating code for "${generatingConceptName}"...`}
+          message="The AI is thinking. This may take a moment."
+          showSpinner={true}
+        />
       )
     }
     

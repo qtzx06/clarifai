@@ -607,6 +607,44 @@ class IntroScene(Scene):
         self.play(FadeOut(title))
         self.wait(1)
 '''
+
+    async def generate_python_implementation(self, concept_name: str, concept_description: str) -> str:
+        """
+        Generate a practical Python implementation for a given concept.
+        """
+        if not self.client:
+            return "# Code generation service temporarily unavailable."
+
+        try:
+            prompt = f'''
+Your task is to write a concise Python script that demonstrates the concept of "{concept_name}".
+
+**Concept Description:** {concept_description}
+
+**Requirements:**
+1.  The script must be a complete, runnable Python file.
+2.  The implementation should be clear and practical, but not overly long.
+3.  Keep comments brief and to the point.
+4.  Include a simple `if __name__ == "__main__":` block to show how the code is used.
+5.  Use only standard Python libraries.
+6.  Your final output should be only the raw Python code, with no markdown formatting.
+'''
+
+            response = await self._call_gemini_api(prompt)
+            
+            if response:
+                # Clean the response to ensure it's just the code
+                if '```python' in response:
+                    response = response.split('```python')[1].split('```')[0]
+                elif '```' in response:
+                    response = response.split('```')[1].split('```')[0]
+                return response.strip()
+            else:
+                return "# Unable to generate code at this time."
+                
+        except Exception as e:
+            print(f"Error in Python code generation: {e}")
+            return f"# An error occurred: {e}"
     
     async def _fallback_analysis(self, content: str, title: str) -> Dict[str, Any]:
         """Fallback analysis when API fails - provide some basic concepts"""

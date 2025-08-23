@@ -4,8 +4,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .api.endpoints import upload, analysis, video
-from .core.config import settings
-import json
+
 
 class ConnectionManager:
     def __init__(self):
@@ -23,6 +22,7 @@ class ConnectionManager:
         if paper_id in self.active_connections:
             await self.active_connections[paper_id].send_text(message)
 
+
 app = FastAPI()
 
 # CORS middleware
@@ -37,6 +37,7 @@ app.add_middleware(
 manager = ConnectionManager()
 video.manager = manager
 
+
 @app.websocket("/ws/papers/{paper_id}/logs")
 async def websocket_endpoint(websocket: WebSocket, paper_id: str):
     await manager.connect(paper_id, websocket)
@@ -45,6 +46,7 @@ async def websocket_endpoint(websocket: WebSocket, paper_id: str):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(paper_id)
+
 
 # --- THIS IS THE DEFINITIVE PATHING FIX ---
 # Mount the 'videos' directory at the top level of the API.

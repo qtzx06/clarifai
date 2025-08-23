@@ -1,11 +1,13 @@
 """
 Paper model for Clarifai
 """
-from typing import List, Dict, Any, Optional
+
+from typing import List, Dict, Optional
 from pydantic import BaseModel
 from enum import Enum
 import uuid
 from datetime import datetime
+
 
 class AnalysisStatus(str, Enum):
     PENDING = "pending"
@@ -13,11 +15,13 @@ class AnalysisStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class VideoStatus(str, Enum):
     NOT_STARTED = "not_started"
     GENERATING = "generating"
     COMPLETED = "completed"
     FAILED = "failed"
+
 
 class ConceptVideo(BaseModel):
     concept_id: str
@@ -28,6 +32,7 @@ class ConceptVideo(BaseModel):
     created_at: datetime
     logs: List[str] = []
 
+
 class Concept(BaseModel):
     id: str
     name: str
@@ -37,6 +42,7 @@ class Concept(BaseModel):
     text_snippets: List[str] = []
     related_concepts: List[str] = []
     concept_type: str = "conceptual"
+
 
 class Paper(BaseModel):
     id: str
@@ -49,20 +55,20 @@ class Paper(BaseModel):
     upload_time: datetime
     analysis_status: AnalysisStatus = AnalysisStatus.PENDING
     video_status: VideoStatus = VideoStatus.NOT_STARTED
-    
+
     # Analysis results
     concepts: List[Concept] = []
     insights: List[str] = []
     methodology: str = ""
     full_analysis: str = ""
-    
+
     # Video information (legacy - for backward compatibility)
     video_path: Optional[str] = None
     clips_paths: List[str] = []
-    
+
     # NEW: Concept-specific video tracking
     concept_videos: Dict[str, ConceptVideo] = {}
-    
+
     @classmethod
     def create_new(cls, filename: str, file_path: str) -> "Paper":
         """Create a new paper instance with generated ID"""
@@ -71,11 +77,13 @@ class Paper(BaseModel):
             title="",
             filename=filename,
             file_path=file_path,
-            upload_time=datetime.now()
+            upload_time=datetime.now(),
         )
+
 
 class PaperResponse(BaseModel):
     """Response model for paper API endpoints"""
+
     id: str
     title: str
     authors: List[str]
@@ -86,13 +94,17 @@ class PaperResponse(BaseModel):
     concepts_count: int = 0
     has_video: bool = False
 
+
 class ConceptResponse(BaseModel):
     """Response model for concepts API"""
+
     concepts: List[Concept]
     total_count: int
 
+
 class VideoStatusResponse(BaseModel):
     """Response model for video status"""
+
     paper_id: str
     video_status: str
     video_path: Optional[str] = None

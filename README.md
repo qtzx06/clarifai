@@ -25,7 +25,7 @@ Deconstruct complex research papers into digestible concepts and automatically g
   </tr>
 </table>
 
- These are clips generated for specific concepts.
+### These are clips generated for specific concepts.
 
 | The Weight Monodromy Conjecture | Word Embeddings |
 | :---: | :---: |
@@ -37,11 +37,11 @@ Deconstruct complex research papers into digestible concepts and automatically g
 
 ---
 
-The video generation agent panel.
+### The video generation agent panel.
 
 ![A screenshot showing some concepts and the video generation agent panel.](media/landing2.png)
 
-Examples of generated Manim animation frames.
+### Examples of generated Manim animation frames.
 
 <div align="center">
 <table>

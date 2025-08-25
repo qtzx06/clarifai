@@ -25,7 +25,7 @@ Deconstruct complex research papers into digestible concepts and automatically g
   </tr>
 </table>
 
-### These are clips generated for specific concepts.
+### Example clips generated for specific concepts.
 
 | The Weight Monodromy Conjecture | Word Embeddings |
 | :---: | :---: |
@@ -37,7 +37,7 @@ Deconstruct complex research papers into digestible concepts and automatically g
 
 ---
 
-### Extracted concepts and the video generation panel.
+### Extracted paper analysis and the video generation panel.
 
 ![A screenshot showing some concepts and the video generation agent panel.](media/landing2.png)
 

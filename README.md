@@ -37,7 +37,7 @@ Deconstruct complex research papers into digestible concepts and automatically g
 
 ---
 
-### The video generation agent panel.
+### Extracted concepts and the video generation panel.
 
 ![A screenshot showing some concepts and the video generation agent panel.](media/landing2.png)
 

@@ -8,7 +8,7 @@ Deconstruct complex research papers into digestible concepts and automatically g
 
 <table>
   <tr>
-    <td align="center"><b>Workflows</b></td>
+    <td align="center"><b>Workflow</b></td>
     <td align="center"><b>UI</b></td>
   </tr>
   <tr>

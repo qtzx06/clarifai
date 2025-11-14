@@ -19,9 +19,10 @@ import {
 } from '../../lib/api';
 
 export default function PaperDetailPage() {
-  const params = useParams();
+  const params = useParams<{ id?: string | string[] }>();
   const router = useRouter();
-  const paperId = params.id as string;
+  const rawPaperId = params?.id;
+  const paperId = Array.isArray(rawPaperId) ? rawPaperId[0] : rawPaperId;
 
   const [paper, setPaper] = useState<Paper | null>(null);
   const [concepts, setConcepts] = useState<Concept[]>([]);
@@ -33,6 +34,7 @@ export default function PaperDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!paperId) return;
     loadPaper();
   }, [paperId]);
 
@@ -43,6 +45,7 @@ export default function PaperDetailPage() {
   }, [paper?.status]);
 
   const loadPaper = async () => {
+    if (!paperId) return;
     try {
       const paperData = await getPaper(paperId);
       setPaper(paperData);
@@ -52,6 +55,7 @@ export default function PaperDetailPage() {
   };
 
   const loadConcepts = async () => {
+    if (!paperId) return;
     try {
       const conceptsData = await getConcepts(paperId);
       setConcepts(conceptsData);
@@ -61,6 +65,7 @@ export default function PaperDetailPage() {
   };
 
   const handleAnalyze = async () => {
+    if (!paperId) return;
     setIsAnalyzing(true);
     setError(null);
 
@@ -90,6 +95,7 @@ export default function PaperDetailPage() {
   };
 
   const handleGenerateConcept = async () => {
+    if (!paperId) return;
     setIsGeneratingConcept(true);
 
     try {
@@ -103,6 +109,7 @@ export default function PaperDetailPage() {
   };
 
   const handleGenerateVideo = async (conceptId: string) => {
+    if (!paperId) return;
     try {
       await generateVideo(paperId, conceptId);
       // Update concept status
@@ -118,6 +125,7 @@ export default function PaperDetailPage() {
 
   const handleAskQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!paperId) return;
     if (!question.trim()) return;
 
     setIsAsking(true);
@@ -132,6 +140,19 @@ export default function PaperDetailPage() {
       setIsAsking(false);
     }
   };
+
+  if (!paperId) {
+    return (
+      <div className="min-h-screen bg-bg-primary">
+        <Navigation />
+        <main className="pt-24 px-6">
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (error) {
     return (

@@ -4,9 +4,11 @@ FROM python:3.13-slim
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     build-essential \
-    python3.12 \
-    python3.12-venv \
     curl \
+    pkg-config \
+    libcairo2-dev \
+    libpango1.0-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -17,17 +19,13 @@ COPY app/ ./app/
 COPY prompts/ ./prompts/
 COPY run_agent.py ./
 
-# Install main backend dependencies (Python 3.13)
+# Install all dependencies in single Python 3.13 environment
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r agent_requirements.txt
 
-# Create Python 3.12 virtual environment for agent
-RUN python3.12 -m venv /app/agent_venv && \
-    /app/agent_venv/bin/pip install --upgrade pip && \
-    /app/agent_venv/bin/pip install --no-cache-dir -r agent_requirements.txt
-
-# Create storage directories
-RUN mkdir -p storage/videos storage/uploads
+# Create storage directories (for app) and media/videos (for Manim)
+RUN mkdir -p storage/videos storage/uploads media/videos videos clips
 
 # Expose port
 EXPOSE 8000

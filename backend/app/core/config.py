@@ -19,11 +19,12 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # CORS Settings
-    ALLOWED_HOSTS: List[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://localhost:3000",
-    ]
+    ALLOWED_HOSTS: str = "http://localhost:3000,http://127.0.0.1:3000,https://localhost:3000"
+
+    @property
+    def allowed_origins(self) -> List[str]:
+        """Parse ALLOWED_HOSTS string into list"""
+        return [origin.strip() for origin in self.ALLOWED_HOSTS.split(",") if origin.strip()]
 
     # File Storage
     MAX_FILE_SIZE: int = 52428800  # 50MB

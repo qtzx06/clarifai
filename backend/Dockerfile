@@ -24,8 +24,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r agent_requirements.txt
 
-# Create storage directories
-RUN mkdir -p storage/videos storage/uploads
+# Create storage directories (for app) and media/videos (for Manim)
+RUN mkdir -p storage/videos storage/uploads media/videos videos clips
 
 # Expose port
 EXPOSE 8000

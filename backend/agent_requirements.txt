@@ -2,12 +2,9 @@
 langchain==0.1.16
 langchain-google-genai==0.0.9
 langchain-core==0.1.48
-numpy<2
 
-# Video generation with Manim
-manim==0.18.1
-moviepy==1.0.3
-ffmpeg-python==0.2.0
+# Note: numpy, manim, moviepy, and ffmpeg-python are already in requirements.txt
+# Removed to avoid version conflicts
 
 # Other dependencies
 

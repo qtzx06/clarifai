@@ -2,8 +2,8 @@
 Paper model for Clarifai
 """
 
-from typing import List, Dict, Optional
-from pydantic import BaseModel
+from typing import List, Dict, Optional, Any
+from pydantic import BaseModel, Field, field_serializer
 from enum import Enum
 import uuid
 from datetime import datetime
@@ -31,6 +31,7 @@ class ConceptVideo(BaseModel):
     clips_paths: List[str] = []
     created_at: datetime
     logs: List[str] = []
+    captions: List[Dict[str, Any]] = []
 
 
 class Concept(BaseModel):
@@ -42,6 +43,19 @@ class Concept(BaseModel):
     text_snippets: List[str] = []
     related_concepts: List[str] = []
     concept_type: str = "conceptual"
+    
+    def model_dump(self, **kwargs):
+        """Override model_dump to use 'type' instead of 'concept_type' for frontend compatibility"""
+        data = super().model_dump(**kwargs)
+        if 'concept_type' in data:
+            data['type'] = data.pop('concept_type')
+        return data
+    
+    def model_dump_json(self, **kwargs):
+        """Override model_dump_json to use 'type' instead of 'concept_type'"""
+        import json
+        data = self.model_dump(**kwargs)
+        return json.dumps(data, default=str)
 
 
 class Paper(BaseModel):

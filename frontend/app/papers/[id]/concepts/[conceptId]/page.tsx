@@ -15,6 +15,17 @@ import {
   type Concept,
 } from '../../../../lib/api';
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.host}`
+    : 'http://localhost:8000');
+
+const resolveVideoUrl = (path?: string | null) => {
+  if (!path) return '';
+  return path.startsWith('http') ? path : `${API_BASE}${path}`;
+};
+
 export default function ConceptDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -62,7 +73,10 @@ export default function ConceptDetailPage() {
         return;
       }
 
-      setConcept(foundConcept);
+      setConcept({
+        ...foundConcept,
+        video_url: resolveVideoUrl(foundConcept.video_url),
+      });
 
       // Poll for video status if generating
       if (foundConcept.video_status === 'generating') {
@@ -80,11 +94,14 @@ export default function ConceptDetailPage() {
 
         if (status.status === 'completed') {
           clearInterval(interval);
-          setConcept((prev) => prev && {
-            ...prev,
-            video_status: 'ready',
-            video_url: status.video_url,
-          });
+          setConcept(
+            (prev) =>
+              prev && {
+                ...prev,
+                video_status: 'ready',
+                video_url: resolveVideoUrl(status.video_url),
+              }
+          );
         } else if (status.status === 'error') {
           clearInterval(interval);
           setConcept((prev) => prev && { ...prev, video_status: 'error' });
@@ -127,11 +144,11 @@ export default function ConceptDetailPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-bg-primary">
+      <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
         <Navigation />
-        <main className="pt-24 px-6">
-          <div className="max-w-7xl mx-auto text-center py-16">
-            <p className="text-accent-error mb-4">{error}</p>
+        <main className="pt-32 px-6">
+          <div className="mx-auto max-w-5xl text-center py-16 space-y-4">
+            <p className="text-accent-error">{error}</p>
             <button onClick={() => router.push(`/papers/${paperId}`)} className="btn-secondary">
               Back to Paper
             </button>
@@ -143,11 +160,11 @@ export default function ConceptDetailPage() {
 
   if (!concept) {
     return (
-      <div className="min-h-screen bg-bg-primary">
+      <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
         <Navigation />
-        <main className="pt-24 px-6">
+        <main className="pt-32 px-6">
           <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-text-tertiary border-t-text-primary rounded-full animate-spin" />
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/15 border-t-white" />
           </div>
         </main>
       </div>
@@ -155,11 +172,18 @@ export default function ConceptDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-primary">
+    <div className="relative min-h-screen overflow-hidden bg-bg-primary text-text-primary">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 left-0 h-[26rem] w-[26rem] rounded-full bg-white/10 blur-[140px] opacity-45 animate-float" />
+        <div
+          className="absolute -bottom-36 right-0 h-[30rem] w-[30rem] rounded-full bg-white/6 blur-[200px] opacity-40 animate-float"
+          style={{ animationDelay: '1.1s' }}
+        />
+      </div>
       <Navigation />
 
-      <main className="pt-20 pb-16 px-6">
-        <div className="max-w-6xl mx-auto">
+      <main className="relative z-10 pt-28 pb-20 px-6">
+        <div className="mx-auto max-w-6xl">
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -169,20 +193,22 @@ export default function ConceptDetailPage() {
           >
             <button
               onClick={() => router.push(`/papers/${paperId}`)}
-              className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-4"
+              className="btn-secondary mb-4 flex items-center gap-2 text-xs"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Back to Paper</span>
             </button>
 
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-6">
               <div>
-                <h1 className="text-3xl font-bold mb-2">{concept.name}</h1>
-                <div className="flex items-center gap-3 text-sm text-text-tertiary">
-                  <span className="px-2 py-1 bg-bg-tertiary border border-accent-border rounded">
+                <h1 className="mb-2 text-[clamp(2rem,3vw,3.5rem)] font-light leading-tight tracking-[-0.03em]">
+                  {concept.name}
+                </h1>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-text-tertiary">
+                  <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1">
                     {concept.type}
                   </span>
-                  <span>Importance: {concept.importance_score}/100</span>
+                  <span>Importance: {Math.round(concept.importance_score * 100)}/100</span>
                 </div>
               </div>
 
@@ -201,7 +227,7 @@ export default function ConceptDetailPage() {
               <div className="card p-0 overflow-hidden">
                 <video
                   controls
-                  className="w-full aspect-video bg-bg-primary"
+                  className="w-full aspect-video bg-black"
                   src={concept.video_url}
                 >
                   Your browser does not support the video tag.
@@ -258,12 +284,12 @@ export default function ConceptDetailPage() {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             <Tabs.Root value={activeTab} onValueChange={setActiveTab}>
-              <Tabs.List className="flex gap-4 border-b border-accent-border mb-6">
+              <Tabs.List className="mb-6 flex gap-4 border-b border-white/10">
                 <Tabs.Trigger
                   value="explanation"
                   className={`flex items-center gap-2 pb-3 px-2 transition-colors border-b-2 ${
                     activeTab === 'explanation'
-                      ? 'border-text-primary text-text-primary'
+                      ? 'border-white text-white'
                       : 'border-transparent text-text-tertiary hover:text-text-secondary'
                   }`}
                 >
@@ -275,7 +301,7 @@ export default function ConceptDetailPage() {
                   value="code"
                   className={`flex items-center gap-2 pb-3 px-2 transition-colors border-b-2 ${
                     activeTab === 'code'
-                      ? 'border-text-primary text-text-primary'
+                      ? 'border-white text-white'
                       : 'border-transparent text-text-tertiary hover:text-text-secondary'
                   }`}
                 >
@@ -288,7 +314,7 @@ export default function ConceptDetailPage() {
                     value="logs"
                     className={`flex items-center gap-2 pb-3 px-2 transition-colors border-b-2 ${
                       activeTab === 'logs'
-                        ? 'border-text-primary text-text-primary'
+                        ? 'border-white text-white'
                         : 'border-transparent text-text-tertiary hover:text-text-secondary'
                     }`}
                   >
@@ -328,7 +354,7 @@ export default function ConceptDetailPage() {
                           Copy Code
                         </button>
                       </div>
-                      <pre className="bg-bg-primary border border-accent-border rounded-lg p-4 overflow-x-auto">
+                      <pre className="rounded-2xl border border-white/10 bg-black/70 p-4 overflow-x-auto">
                         <code className="text-sm text-text-secondary">{code}</code>
                       </pre>
                     </div>
@@ -341,7 +367,7 @@ export default function ConceptDetailPage() {
                 <Tabs.Content value="logs">
                   <div className="card">
                     <h3 className="font-semibold mb-4">Generation Logs</h3>
-                    <div className="bg-bg-primary border border-accent-border rounded-lg p-4 max-h-[500px] overflow-y-auto">
+                    <div className="rounded-2xl border border-white/10 bg-black/70 p-4 max-h-[500px] overflow-y-auto">
                       {logs.length === 0 ? (
                         <p className="text-text-tertiary text-sm">Waiting for logs...</p>
                       ) : (

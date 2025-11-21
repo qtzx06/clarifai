@@ -17,6 +17,54 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+detect_tinytex_bin() {
+    local os="$(uname -s)"
+    local arch="$(uname -m)"
+    case "$os" in
+        Darwin)
+            echo "$HOME/.TinyTeX/bin/universal-darwin"
+            ;;
+        Linux)
+            if [[ "$arch" == "aarch64" || "$arch" == "arm64" ]]; then
+                echo "$HOME/.TinyTeX/bin/aarch64-linux"
+            else
+                echo "$HOME/.TinyTeX/bin/x86_64-linux"
+            fi
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+ensure_latex() {
+    if command_exists latex; then
+        printf "%b\n" "${GREEN}LaTeX distribution detected: $(which latex)${NC}"
+        return
+    fi
+
+    printf "%b\n" "${YELLOW}LaTeX not found. Installing TinyTeX for MathTex rendering...${NC}"
+    if ! curl -sL https://yihui.org/tinytex/install-bin-unix.sh | sh; then
+        printf "%b\n" "${RED}TinyTeX installation failed. Please install a LaTeX distribution manually (${YELLOW}https://yihui.org/tinytex/${RED}).${NC}"
+        return
+    fi
+
+    local texbin
+    texbin="$(detect_tinytex_bin)"
+    if [[ -d "$texbin" ]]; then
+        export PATH="$texbin:$PATH"
+        printf "%b\n" "${GREEN}Added TinyTeX binaries to PATH (${texbin}).${NC}"
+    else
+        printf "%b\n" "${YELLOW}TinyTeX installed, but could not detect bin path. You may need to add it to PATH manually.${NC}"
+    fi
+
+    if command_exists latex; then
+        printf "%b\n" "${GREEN}LaTeX installation complete.${NC}"
+    else
+        printf "%b\n" "${RED}LaTeX command still not found. MathTex rendering may fall back to text-only mode.${NC}"
+    fi
+}
+
 # --- Dependency Checks ---
 printf "\n%b\n" "${BLUE}Checking dependencies...${NC}"
 if ! command_exists uv; then
@@ -33,6 +81,10 @@ if ! command_exists npm; then
     exit 1
 fi
 printf "%b\n" "${GREEN}Dependencies check passed.${NC}"
+
+# --- Ensure LaTeX is available for Manim MathTex ---
+printf "\n%b\n" "${BLUE}Checking for LaTeX toolchain...${NC}"
+ensure_latex
 
 # --- Agent Environment Setup ---
 printf "\n%b\n" "${BLUE}Setting up agent environment...${NC}"

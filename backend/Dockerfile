@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     libcairo2-dev \
     libpango1.0-dev \
     python3-dev \
+    texlive \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -19,7 +22,7 @@ COPY app/ ./app/
 COPY prompts/ ./prompts/
 COPY run_agent.py ./
 
-# Install all dependencies in single Python 3.13 environment
+# Install all dependencies in single Python 3.12 environment
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r agent_requirements.txt

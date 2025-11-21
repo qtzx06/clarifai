@@ -3,8 +3,17 @@ langchain==0.1.16
 langchain-google-genai==0.0.9
 langchain-core==0.1.48
 
-# Note: numpy, manim, moviepy, and ffmpeg-python are already in requirements.txt
-# Removed to avoid version conflicts
+# Google GenAI SDK (required for run_agent.py)
+google-genai
+
+# Rendering stack for video agent
+manim==0.18.1
+moviepy==1.0.3
+numpy==1.26.4
+scipy==1.11.4
+pillow==10.3.0
+tqdm==4.66.4
+ffmpeg-python==0.2.0
 
 # Other dependencies
 

@@ -10,10 +10,51 @@ Your mission is to produce a short, cinematic-quality animation that is both unf
 5.  **Mathematical Beauty:** All mathematical elements must be rendered with `Tex` for ultimate clarity and elegance.
 6.  **Vibrant & Purposeful Color:** Use color to highlight, contrast, and guide the viewer's attention.
 
---- LAYOUT & COMPOSITION ---
-1.  **Structured Zones:** Keep the screen organized. Use logical zones for content. For example, place main titles at the top (`to_edge(UP)`), formulas and explanatory text on the sides, and the primary animation in the center. Do not let elements drift or overlap chaotically.
-2.  **Clean & Focused:** Every frame must be a work of art. Maintain a clean, focused composition. Gracefully `FadeOut` old elements before introducing new ones to prevent clutter.
-3.  **Refined Fonts:** Use smaller, more elegant font sizes for text and labels. Avoid large, distracting fonts. A scale of `0.5` to `0.7` is often appropriate.
+--- LAYOUT & COMPOSITION (ANTI-OVERLAP RULES) ---
+1.  **Structured Zones:** Keep the screen organized. Use logical zones for content:
+    *   **TOP ZONE** (titles): `text.to_edge(UP, buff=0.5)` → Y position ~3.0
+    *   **BOTTOM ZONE** (captions): `text.to_edge(DOWN, buff=0.5)` → Y position ~-3.0
+    *   **CENTER ZONE** (main animations): Keep visual elements here
+    *   **NEVER** place text in overlapping zones
+2.  **Mandatory Spacing:** ALWAYS use the `buff` parameter:
+    *   `.next_to(other_obj, direction, buff=0.5)` — Minimum buff=0.3, recommended 0.5-1.0
+    *   `VGroup(obj1, obj2, obj3).arrange(DOWN, buff=0.4)` — Minimum buff=0.3 for text
+    *   Edge positioning: `obj.to_edge(direction, buff=0.5)` — NEVER use buff < 0.3
+3.  **Clean & Focused:** Every frame must be a work of art. Maintain a clean, focused composition:
+    *   Gracefully `FadeOut` old elements before introducing new ones to prevent clutter
+    *   Maximum 2-3 text blocks on screen simultaneously
+    *   If adding new text, remove or move old text first
+4.  **Refined Fonts:** Use smaller, more elegant font sizes for text and labels. Avoid large, distracting fonts. A scale of `0.5` to `0.7` is often appropriate.
+5.  **Use VGroup for Related Elements:** When you have multiple text objects that should stay together, ALWAYS group them:
+    ```python
+    title = Text("Title", font_size=36)
+    subtitle = Text("Subtitle", font_size=24)
+    header = VGroup(title, subtitle).arrange(DOWN, buff=0.3)
+    header.to_edge(UP, buff=0.5)
+    ```
+
+--- RENDERING RULES (CRITICAL FOR QUALITY) ---
+1.  Immediately set `self.camera.background_color = "#000000"` at the top of every scene to guarantee a pure black background.
+2.  **Text Overlap Prevention (MANDATORY):**
+    *   ALWAYS use `VGroup(...).arrange()` for multiple text objects — NEVER position them manually
+    *   When adding new text, ALWAYS `FadeOut` or `.shift()` old text out of the way first
+    *   Maximum 2-3 text elements visible simultaneously
+    *   Check positioning: titles at top (Y~3), captions at bottom (Y~-3), labels on sides
+    *   Example pattern:
+        ```python
+        # Good: Clear zones, no overlap
+        title.to_edge(UP, buff=0.5)
+        formula.move_to(ORIGIN)
+        caption.to_edge(DOWN, buff=0.5)
+
+        # Bad: Will overlap!
+        text1.move_to(UP)
+        text2.move_to(UP)  # DON'T DO THIS
+        ```
+3.  Ensure plenty of breathing room between visual elements; avoid stacking labels directly on top of shapes. Minimum spacing: 0.5 units.
+4.  Use high-contrast colors (neon accents on black) so elements pop clearly against the dark background.
+
+{cheat_sheet}
 
 --- STRICT TECHNICAL REQUIREMENTS ---
 1.  **Focused & Concise:** The animation must be STRICTLY bounded to the description. Do not introduce extraneous concepts.

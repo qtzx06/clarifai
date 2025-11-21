@@ -3,14 +3,14 @@ Analysis API endpoints for paper concept extraction and clarification
 """
 
 import uuid
-from typing import Dict, Any
+from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
 
 from ...models.paper import ConceptResponse, Concept
 from ...services.gemini_service import GeminiService
-from .upload import papers_db  # Import shared papers database
+from .upload import papers_db, save_papers_to_disk  # Import shared papers database and save function
 
 router = APIRouter()
 
@@ -22,9 +22,15 @@ class AnalyzeRequest(BaseModel):
     paper_id: str
 
 
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
 class ClarifyRequest(BaseModel):
-    text_snippet: str
+    question: str = ""
+    text_snippet: str = ""  # Keep for backward compatibility
     context: str = ""
+    conversation_history: List[ChatMessage] = []  # Previous messages in the conversation
 
 
 @router.post("/papers/{paper_id}/analyze")
@@ -73,6 +79,12 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
                 name.lower().startswith("key concept from")
                 or "temporarily unavailable" in description.lower()
                 or "clear, descriptive name" in description.lower()
+                or "Research Implementation Details" in name
+                or "Performance Optimization Strategy" in name
+                or "Experimental Design Framework" in name
+                or "Technical Analysis Method" in name
+                or "Data Processing Technique" in name
+                or "Statistical Evaluation Approach" in name
             )
 
             if not is_generic:
@@ -102,6 +114,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
         paper.full_analysis = analysis_result["full_analysis"]
 
         print(f"Analysis completed for paper: {paper.title}")
+        save_papers_to_disk()  # Save after analysis
 
         return {
             "message": "Analysis completed successfully",
@@ -115,7 +128,7 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
 
 
 @router.get("/papers/{paper_id}/concepts")
-async def get_paper_concepts(paper_id: str) -> ConceptResponse:
+async def get_paper_concepts(paper_id: str):
     """
     Get extracted concepts for a paper
     """
@@ -124,7 +137,50 @@ async def get_paper_concepts(paper_id: str) -> ConceptResponse:
 
     paper = papers_db[paper_id]
 
-    return ConceptResponse(concepts=paper.concepts, total_count=len(paper.concepts))
+    concepts_with_status = []
+    for concept in paper.concepts:
+        # Build a dict that matches the frontend expectations
+        concept_dict = {
+            "id": concept.id,
+            "name": concept.name,
+            "description": concept.description,
+            "importance_score": concept.importance_score,
+            "page_numbers": concept.page_numbers,
+            "text_snippets": concept.text_snippets,
+            "related_concepts": concept.related_concepts,
+            "type": concept.concept_type,
+        }
+
+        # Get video status from concept_videos if it exists
+        concept_video = paper.concept_videos.get(concept.id)
+        if concept_video:
+            # Map VideoStatus enum to frontend expected values
+            status_map = {
+                "not_started": "not_generated",
+                "generating": "generating",
+                "completed": "ready",
+                "failed": "error"
+            }
+            mapped_status = status_map.get(concept_video.status.value, "not_generated")
+            concept_dict["video_status"] = mapped_status
+            print(f"[CONCEPTS] Concept {concept.id}: video_status={concept_video.status.value} -> {mapped_status}")
+            if concept_video.video_path:
+                concept_dict["video_url"] = concept_video.video_path
+            if concept_video.captions:
+                concept_dict["video_captions"] = concept_video.captions
+        else:
+            concept_dict["video_status"] = "not_generated"
+            print(f"[CONCEPTS] Concept {concept.id}: no concept_video entry, defaulting to 'not_generated'")
+        
+        concepts_with_status.append(concept_dict)
+
+    # Return JSON response directly so extra fields aren't stripped
+    return JSONResponse(
+        content={
+            "concepts": concepts_with_status,
+            "total_count": len(concepts_with_status),
+        }
+    )
 
 
 @router.delete("/papers/{paper_id}/concepts/{concept_id}")
@@ -147,9 +203,9 @@ async def delete_concept(paper_id: str, concept_id: str) -> Dict[str, str]:
 
 
 @router.post("/papers/{paper_id}/clarify")
-async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]:
+async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, Any]:
     """
-    Get clarification for specific text from a paper
+    Answer questions about a paper with conversation history support
     """
     if paper_id not in papers_db:
         raise HTTPException(status_code=404, detail="Paper not found")
@@ -157,15 +213,41 @@ async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, str]
     paper = papers_db[paper_id]
 
     try:
-        # Use Gemini to clarify the text
+        # Support both question format and text_snippet format
+        query_text = request.question if request.question else request.text_snippet
+        
+        if not query_text:
+            raise HTTPException(status_code=400, detail="Question or text_snippet is required")
+
+        # Build context with paper information
+        context_parts = [f"Paper title: {paper.title}"]
+        if paper.abstract:
+            context_parts.append(f"Summary: {paper.abstract[:500]}")
+        if paper.content:
+            context_parts.append(f"Paper content (first 2000 chars): {paper.content[:2000]}")
+        if request.context:
+            context_parts.append(request.context)
+        
+        base_context = ". ".join(context_parts)
+
+        # Build conversation history for context
+        conversation_context = ""
+        if request.conversation_history:
+            conversation_context = "\n\nPrevious conversation:\n"
+            for msg in request.conversation_history[-5:]:  # Last 5 messages for context
+                conversation_context += f"{msg.role}: {msg.content}\n"
+        
+        full_context = base_context + conversation_context
+
+        # Use Gemini to answer the question with conversation context
         explanation = await gemini_service.clarify_text_with_gemini(
-            text=request.text_snippet,
-            context=f"Paper title: {paper.title}. {request.context}",
+            text=query_text,
+            context=full_context,
         )
 
         return {
-            "text_snippet": request.text_snippet,
-            "explanation": explanation,
+            "answer": explanation,
+            "question": query_text,
             "paper_title": paper.title,
         }
 
@@ -238,6 +320,12 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
                 name.lower().startswith("key concept from")
                 or "temporarily unavailable" in description.lower()
                 or "clear, descriptive name" in description.lower()
+                or "Research Implementation Details" in name
+                or "Performance Optimization Strategy" in name
+                or "Experimental Design Framework" in name
+                or "Technical Analysis Method" in name
+                or "Data Processing Technique" in name
+                or "Statistical Evaluation Approach" in name
             )
 
             if not is_generic:
@@ -264,6 +352,7 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
         print(
             f"Concepts refreshed for paper: {paper.title} ({len(paper.concepts)} valid concepts)"
         )
+        save_papers_to_disk()  # Save after concept extraction
 
         return ConceptResponse(concepts=paper.concepts, total_count=len(paper.concepts))
 
@@ -301,11 +390,38 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
         )
 
         if new_concept_data:
+            name = new_concept_data.get("name", "")
+            description = new_concept_data.get("description", "")
+
+            # Filter out generic/fallback concepts
+            is_generic = (
+                not name
+                or not description
+                or len(name) <= 3
+                or len(description) <= 10
+                or name.lower().startswith("key concept from")
+                or "temporarily unavailable" in description.lower()
+                or "clear, descriptive name" in description.lower()
+                or "Research Implementation Details" in name
+                or "Performance Optimization Strategy" in name
+                or "Experimental Design Framework" in name
+                or "Technical Analysis Method" in name
+                or "Data Processing Technique" in name
+                or "Statistical Evaluation Approach" in name
+            )
+
+            if is_generic:
+                print(f"Rejected generic fallback concept: '{name}'")
+                return {
+                    "success": False,
+                    "message": "Generated concept was too generic. Please try again.",
+                }
+
             # Create new concept object
             new_concept = Concept(
                 id=str(uuid.uuid4()),
-                name=new_concept_data["name"],
-                description=new_concept_data["description"],
+                name=name,
+                description=description,
                 importance_score=new_concept_data["importance_score"],
                 page_numbers=[],
                 text_snippets=[],
@@ -315,6 +431,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
 
             # Add to existing concepts (don't replace)
             paper.concepts.append(new_concept)
+            save_papers_to_disk()  # Save after adding concept
 
             print(f"Generated additional concept: '{new_concept.name}'")
 
@@ -325,7 +442,7 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
                     "name": new_concept.name,
                     "description": new_concept.description,
                     "importance_score": new_concept.importance_score,
-                    "concept_type": new_concept.concept_type,
+                    "type": new_concept.concept_type,  # Frontend expects "type" not "concept_type"
                 },
                 "total_concepts": len(paper.concepts),
             }
@@ -345,12 +462,11 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
 
 @router.post(
     "/papers/{paper_id}/concepts/{concept_name}/implement",
-    response_class=PlainTextResponse,
 )
 async def get_code_implementation(
     paper_id: str,
     concept_name: str,
-) -> str:
+) -> Dict[str, str]:
     """
     Generate a Python code implementation for a given concept.
     """
@@ -358,17 +474,21 @@ async def get_code_implementation(
         raise HTTPException(status_code=404, detail="Paper not found")
 
     paper = papers_db[paper_id]
-    concept = next((c for c in paper.concepts if c.name == concept_name), None)
+    # Decode URL-encoded concept name
+    from urllib.parse import unquote
+    decoded_concept_name = unquote(concept_name)
+    concept = next((c for c in paper.concepts if c.name == decoded_concept_name), None)
     if not concept:
-        raise HTTPException(status_code=404, detail="Concept not found")
+        raise HTTPException(status_code=404, detail=f"Concept not found: {decoded_concept_name}")
 
     try:
         gemini_service = GeminiService()
         code = await gemini_service.generate_python_implementation(
             concept.name, concept.description
         )
-        return code
+        return {"code": code}
     except Exception as e:
+        print(f"Code generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
 
 

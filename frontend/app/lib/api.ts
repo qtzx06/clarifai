@@ -1,5 +1,36 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
+const resolveApiUrl = () => {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.host}`;
+  }
+  return 'http://localhost:8000';
+};
+
+const resolveWsUrl = () => {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}`;
+  }
+  return 'ws://localhost:8000';
+};
+
+const API_URL = resolveApiUrl();
+const WS_URL = resolveWsUrl();
+
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+
+const getHeaders = (): HeadersInit => {
+  const headers: HeadersInit = {};
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+  return headers;
+};
 
 export interface Paper {
   id: string;
@@ -11,6 +42,12 @@ export interface Paper {
   status: 'uploaded' | 'analyzing' | 'analyzed' | 'error';
 }
 
+export interface VideoCaption {
+  clip: number;
+  text: string;
+  rendered?: boolean;
+}
+
 export interface Concept {
   id: string;
   name: string;
@@ -19,6 +56,7 @@ export interface Concept {
   description: string;
   video_status?: 'not_generated' | 'generating' | 'ready' | 'error';
   video_url?: string;
+  video_captions?: VideoCaption[];
   code?: string;
 }
 
@@ -33,16 +71,50 @@ export async function uploadPaper(file: File): Promise<Paper> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await fetch(`${API_URL}/api/upload`, {
-    method: 'POST',
-    body: formData,
-  });
+  try {
+    const response = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: formData,
+    });
+
+    console.log('Upload response status:', response.status, response.statusText);
+    console.log('Upload response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Upload failed:', response.status, errorText);
+      throw new Error(`Failed to upload paper: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Upload response data:', data);
+    
+    // Validate response has required fields
+    if (!data.id) {
+      console.error('Invalid response: missing id', data);
+      throw new Error('Invalid response from server: missing paper id');
+    }
+    
+    return data as Paper;
+  } catch (err) {
+    console.error('Upload error:', err);
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error('Failed to upload paper: Unknown error');
+  }
+}
+
+export async function listPapers(): Promise<Paper[]> {
+  const response = await fetch(`${API_URL}/api/papers`);
 
   if (!response.ok) {
-    throw new Error('Failed to upload paper');
+    throw new Error('Failed to fetch papers');
   }
 
-  return response.json();
+  const data = await response.json();
+  return data.papers || [];
 }
 
 export async function getPaper(paperId: string): Promise<Paper> {
@@ -53,6 +125,17 @@ export async function getPaper(paperId: string): Promise<Paper> {
   }
 
   return response.json();
+}
+
+export async function deletePaper(paperId: string): Promise<void> {
+  const response = await fetch(`${API_URL}/api/papers/${paperId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to delete paper');
+  }
 }
 
 export async function analyzePaper(paperId: string): Promise<void> {
@@ -92,7 +175,10 @@ export async function generateAdditionalConcept(paperId: string): Promise<Concep
 export async function generateVideo(paperId: string, conceptId: string): Promise<void> {
   const response = await fetch(
     `${API_URL}/api/papers/${paperId}/concepts/${conceptId}/generate-video`,
-    { method: 'POST' }
+    {
+      method: 'POST',
+      headers: getHeaders(),
+    }
   );
 
   if (!response.ok) {
@@ -133,16 +219,28 @@ export async function getCodeImplementation(
 }
 
 // Q&A API
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export async function askQuestion(
   paperId: string,
-  question: string
+  question: string,
+  conversationHistory: ChatMessage[] = []
 ): Promise<{ answer: string }> {
   const response = await fetch(`${API_URL}/api/papers/${paperId}/clarify`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ 
+      question,
+      conversation_history: conversationHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+    }),
   });
 
   if (!response.ok) {

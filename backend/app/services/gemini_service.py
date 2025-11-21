@@ -5,6 +5,7 @@ Replaces Claude + NVIDIA with single unified AI service
 
 import asyncio
 import json
+import time
 from typing import Dict, List, Any, Optional
 from google import genai
 from ..core.config import settings
@@ -15,6 +16,8 @@ class GeminiService:
         self.api_key = settings.GEMINI_API_KEY
         self.model = settings.GEMINI_MODEL
         self.client = None
+        self.last_call_time = 0  # Track last API call time for rate limiting
+        self.min_call_interval = 0.5  # Minimum seconds between API calls
 
         if self.api_key:
             # Initialize Gemini client
@@ -190,65 +193,97 @@ JSON object:"""
             response = await self._call_gemini_api(prompt)
 
             if response:
+                print(f"Gemini response for additional concept: {response[:200]}...")
                 try:
-                    # Try to parse JSON response
+                    # Try multiple JSON extraction strategies
+                    json_str = None
+                    
+                    # Strategy 1: Look for JSON object with double braces
                     if "{{" in response and "}}" in response:
                         start = response.find("{{")
                         end = response.rfind("}}") + 1
                         json_str = response[start:end]
+                    # Strategy 2: Look for JSON object with single braces
+                    elif "{" in response and "}" in response:
+                        start = response.find("{")
+                        end = response.rfind("}") + 1
+                        json_str = response[start:end]
+                    # Strategy 3: Try to find JSON in code blocks
+                    elif "```json" in response:
+                        start = response.find("```json") + 7
+                        end = response.find("```", start)
+                        if end > start:
+                            json_str = response[start:end].strip()
+                    elif "```" in response:
+                        start = response.find("```") + 3
+                        end = response.find("```", start)
+                        if end > start:
+                            json_str = response[start:end].strip()
+                    
+                    if json_str:
+                        print(f"Extracted JSON string: {json_str[:100]}...")
                         concept_data = json.loads(json_str)
 
                         # Validate the concept
                         name = concept_data.get("name", "").strip()
                         description = concept_data.get("description", "").strip()
 
-                        if (
-                            name
-                            and description
-                            and len(name) > 3
-                            and len(description) > 10
-                        ):
-                            # More lenient duplicate checking - allow variations
-                            name_lower = name.lower()
-                            is_too_similar = any(
-                                existing.lower() == name_lower
-                                or (
-                                    len(existing) > 5
-                                    and existing.lower() in name_lower
-                                    and len(name_lower) - len(existing.lower()) < 3
-                                )
-                                for existing in existing_concepts
-                            )
+                        if not name or not description:
+                            print(f"Missing name or description. Name: '{name}', Description: '{description[:50]}...'")
+                            return await self._fallback_additional_concept(timestamp)
+                        
+                        if len(name) <= 3:
+                            print(f"Name too short: '{name}'")
+                            return await self._fallback_additional_concept(timestamp)
+                        
+                        if len(description) <= 10:
+                            print(f"Description too short: '{description}'")
+                            return await self._fallback_additional_concept(timestamp)
 
-                            if not is_too_similar:
-                                print(f"Generated fresh concept: '{name}'")
-                                return {
-                                    "name": name[:80],
-                                    "description": description[:400],
-                                    "importance_score": min(
-                                        1.0,
-                                        max(
-                                            0.5,
-                                            float(
-                                                concept_data.get(
-                                                    "importance_score", 0.7
-                                                )
-                                            ),
-                                        ),
+                        # More lenient duplicate checking - allow variations
+                        name_lower = name.lower()
+                        is_too_similar = any(
+                            existing.lower() == name_lower
+                            or (
+                                len(existing) > 5
+                                and existing.lower() in name_lower
+                                and len(name_lower) - len(existing.lower()) < 3
+                            )
+                            for existing in existing_concepts
+                        )
+
+                        if is_too_similar:
+                            print(f"Concept too similar to existing: '{name}' (existing: {existing_concepts})")
+                            return await self._fallback_additional_concept(timestamp)
+
+                        print(f"Successfully parsed and validated concept: '{name}'")
+                        return {
+                            "name": name[:80],
+                            "description": description[:400],
+                            "importance_score": min(
+                                1.0,
+                                max(
+                                    0.5,
+                                    float(
+                                        concept_data.get(
+                                            "importance_score", 0.7
+                                        )
                                     ),
-                                    "concept_type": concept_data.get(
-                                        "concept_type", "conceptual"
-                                    ),
-                                }
-                            else:
-                                print(
-                                    f"Concept too similar to existing, using fallback: '{name}'"
-                                )
+                                ),
+                            ),
+                            "concept_type": concept_data.get(
+                                "concept_type", "conceptual"
+                            ),
+                        }
+                    else:
+                        print(f"Could not extract JSON from response. Response: {response[:300]}")
 
                 except (json.JSONDecodeError, KeyError, ValueError) as e:
                     print(f"JSON parsing failed for additional concept: {e}")
+                    print(f"Response that failed to parse: {response[:300]}")
 
                 # Use fallback with timestamp for uniqueness
+                print("Falling back to generic concept due to parsing/validation failure")
                 return await self._fallback_additional_concept(timestamp)
             else:
                 return await self._fallback_additional_concept(timestamp)
@@ -387,22 +422,37 @@ Return ONLY the Python class code:
 
     async def clarify_text_with_gemini(self, text: str, context: str = "") -> str:
         """
-        Use Gemini to clarify specific text from research papers
+        Use Gemini to answer questions about research papers with conversation context
         """
         if not self.client:
             return "Clarification service temporarily unavailable."
 
         try:
-            prompt = f"""Explain this research text in simple terms. Be concise and avoid markdown formatting.
+            # Determine if it's a question or text to clarify
+            is_question = text.strip().endswith("?") or any(
+                word in text.lower() for word in ["what", "how", "why", "when", "where", "explain", "describe", "tell me", "can you"]
+            )
+            
+            if is_question:
+                prompt = f"""You are a helpful assistant answering questions about a research paper. Use the context provided to give accurate, conversational answers.
 
-Question: "{text}"
+Context about the paper:
+{context}
+
+User's question: "{text}"
+
+Provide a helpful, conversational answer based on the paper content. If the answer isn't in the provided context, say so. Keep responses concise (2-4 sentences) but natural. No markdown formatting, just plain text. Reference previous conversation if relevant."""
+            else:
+                prompt = f"""Explain this research text in simple terms. Be concise and avoid markdown formatting.
+
+Text: "{text}"
 Context: {context}
 
-Provide a clear, direct answer in 2-3 sentences. No bullet points, no markdown formatting, just plain text explanation."""
+Provide a clear, direct explanation in 2-3 sentences. No bullet points, no markdown formatting, just plain text explanation."""
 
             response = await self._call_gemini_api(prompt)
             return (
-                response
+                response.strip()
                 if response
                 else "Unable to provide clarification at this time."
             )
@@ -411,9 +461,47 @@ Provide a clear, direct answer in 2-3 sentences. No bullet points, no markdown f
             print(f"Error in Gemini clarification: {e}")
             return "Unable to provide clarification at this time."
 
+    async def generate_paper_summary(self, content: str, title: str = "") -> str:
+        """
+        Generate a concise summary of the research paper using Gemini
+        """
+        if not self.client:
+            return "Summary generation temporarily unavailable."
+
+        try:
+            # Use more content for better summary (up to 8000 chars)
+            content_preview = content[:8000]
+            
+            prompt = f"""Generate a clear, concise summary of this research paper. Write it as if you're explaining the paper to someone who wants to understand its main contributions.
+
+Paper Title: {title}
+Paper Content: {content_preview}
+
+Write a summary that:
+- Explains the main research question or problem addressed
+- Describes the key methodology or approach
+- Highlights the most important findings or contributions
+- Is written in clear, accessible language
+- Is 3-5 sentences long
+- Does NOT include markdown formatting
+- Does NOT repeat the title
+
+Summary:"""
+
+            response = await self._call_gemini_api(prompt)
+            return (
+                response.strip()[:1000]  # Limit to 1000 chars
+                if response
+                else "Unable to generate summary at this time."
+            )
+
+        except Exception as e:
+            print(f"Error generating paper summary: {e}")
+            return "Unable to generate summary at this time."
+
     async def extract_paper_metadata_with_gemini(self, content: str) -> Dict[str, Any]:
         """
-        Use Gemini to intelligently extract paper title, authors, and abstract
+        Use Gemini to intelligently extract paper title, authors, and generate summary
         """
         if not self.client:
             return {"title": "", "authors": [], "abstract": ""}
@@ -426,19 +514,16 @@ Text: {content[:3000]}
 Please extract:
 1. TITLE: The exact title of the research paper (not repeated or with "by")
 2. AUTHORS: List of author names (first and last names)
-3. ABSTRACT: The paper's abstract section
 
 Return in JSON format:
 {{
     "title": "Exact Paper Title Here",
-    "authors": ["Author One", "Author Two", "Author Three"],
-    "abstract": "The complete abstract text here..."
+    "authors": ["Author One", "Author Two", "Author Three"]
 }}
 
 Rules:
 - Title should be the actual paper title, not repeated
 - Authors should be real names only, no affiliations
-- Abstract should be the complete abstract section
 - If any field is unclear, use empty string or empty array
 
 JSON:"""
@@ -454,20 +539,27 @@ JSON:"""
                         json_str = response[start:end]
                         metadata = json.loads(json_str)
 
+                        title = metadata.get("title", "")[:200]
+                        authors = metadata.get("authors", [])[:5]  # Limit to 5 authors
+                        
+                        # Generate summary separately with more content
+                        summary = await self.generate_paper_summary(content, title)
+
                         return {
-                            "title": metadata.get("title", "")[:200],
-                            "authors": metadata.get("authors", [])[
-                                :5
-                            ],  # Limit to 5 authors
-                            "abstract": metadata.get("abstract", "")[
-                                :800
-                            ],  # Limit abstract length
+                            "title": title,
+                            "authors": authors,
+                            "abstract": summary,  # Store summary as "abstract" for compatibility
                         }
                 except (json.JSONDecodeError, KeyError) as e:
                     print(f"JSON parsing failed for metadata: {e}")
 
                 # Fallback to text parsing if JSON fails
-                return self._parse_metadata_from_text(response)
+                parsed = self._parse_metadata_from_text(response)
+                # Generate summary even if JSON parsing failed
+                if parsed.get("title"):
+                    summary = await self.generate_paper_summary(content, parsed.get("title", ""))
+                    parsed["abstract"] = summary
+                return parsed
 
             return {"title": "", "authors": [], "abstract": ""}
 
@@ -494,31 +586,63 @@ JSON:"""
                     # Try to parse author list
                     authors = [a.strip().strip('"') for a in authors_text.split(",")]
                     metadata["authors"] = authors[:5]
-            elif line.lower().startswith("abstract:"):
-                metadata["abstract"] = line[9:].strip().strip('"')
+            # Note: abstract/summary is now generated separately, not parsed
 
         return metadata
 
-    async def _call_gemini_api(self, prompt: str) -> Optional[str]:
+    async def _call_gemini_api(self, prompt: str, max_retries: int = 3) -> Optional[str]:
         """
-        Make async call to Gemini API
+        Make async call to Gemini API with retry logic and exponential backoff
         """
-        try:
-            # Using the new google-genai client
-            response = await asyncio.to_thread(
-                self.client.models.generate_content, model=self.model, contents=prompt
-            )
+        # Rate limiting: ensure minimum time between calls
+        current_time = time.time()
+        time_since_last_call = current_time - self.last_call_time
+        if time_since_last_call < self.min_call_interval:
+            await asyncio.sleep(self.min_call_interval - time_since_last_call)
+        
+        for attempt in range(max_retries):
+            try:
+                # Using the new google-genai client
+                response = await asyncio.to_thread(
+                    self.client.models.generate_content, model=self.model, contents=prompt
+                )
 
-            if response and response.text:
-                print(f"Gemini API call successful: {len(response.text)} chars")
-                return response.text
-            else:
-                print("Gemini API returned empty response")
-                return None
+                self.last_call_time = time.time()  # Update last call time on success
 
-        except Exception as e:
-            print(f"Gemini API call failed: {e}")
-            return None
+                if response and response.text:
+                    print(f"Gemini API call successful: {len(response.text)} chars")
+                    return response.text
+                else:
+                    print("Gemini API returned empty response")
+                    return None
+
+            except Exception as e:
+                error_str = str(e).lower()
+                is_rate_limit = (
+                    "503" in str(e) 
+                    or "unavailable" in error_str
+                    or "rate limit" in error_str
+                    or "quota" in error_str
+                    or "overloaded" in error_str
+                )
+                
+                if is_rate_limit and attempt < max_retries - 1:
+                    # Exponential backoff: 1s, 2s, 4s, etc.
+                    wait_time = 2 ** attempt
+                    print(f"Gemini API rate limited (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s before retry...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                else:
+                    print(f"Gemini API call failed: {e}")
+                    if attempt < max_retries - 1:
+                        # For other errors, use shorter backoff
+                        wait_time = 1 * (attempt + 1)
+                        print(f"Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        return None
+        
+        return None
 
     def _extract_concepts_from_gemini_response(
         self, gemini_text: str, title: str

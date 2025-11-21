@@ -1,48 +1,123 @@
+@import url('https://fonts.cdnfonts.com/css/geist');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
   * {
-    @apply border-accent-border;
+    @apply border-transparent antialiased;
   }
 
   body {
-    @apply bg-bg-primary text-text-primary;
+    @apply bg-bg-primary text-text-primary font-sans font-light;
+    letter-spacing: -0.015em;
+    background:
+      radial-gradient(60% 60% at 20% 20%, rgba(255, 255, 255, 0.12), transparent),
+      radial-gradient(45% 45% at 80% 0%, rgba(255, 255, 255, 0.08), transparent),
+      #020202;
+    min-height: 100vh;
   }
 
-  /* Scrollbar styling */
+  /* Smooth page transitions */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Prevent layout shift during transitions */
+  main {
+    will-change: opacity, transform;
+  }
+
+  ::selection {
+    background: rgba(255, 255, 255, 0.25);
+    color: #020202;
+  }
+
   ::-webkit-scrollbar {
     @apply w-2 h-2;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-bg-secondary;
+    @apply bg-transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-accent-border rounded-full;
+    @apply bg-white/25 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-text-tertiary;
+    @apply bg-white/50;
   }
 }
 
 @layer components {
   .card {
-    @apply bg-bg-tertiary border border-accent-border rounded-lg p-6;
+    @apply relative overflow-hidden rounded-3xl p-8 border border-white/20 bg-black/40 backdrop-blur-3xl;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 255, 255, 0.1) inset;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                border-color 0.3s ease;
+  }
+
+  .card::after {
+    content: '';
+    position: absolute;
+    inset: -120% 0 0 0;
+    background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.25), transparent);
+    opacity: 0;
+    transform: translateX(-50%);
+    pointer-events: none;
+    will-change: opacity, transform;
   }
 
   .card-hover {
-    @apply transition-all duration-200 hover:bg-bg-hover hover:border-text-primary hover:-translate-y-0.5;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                border-color 0.3s ease;
+  }
+
+  .card-hover::after {
+    transition: opacity 0.5s cubic-bezier(0.19, 1, 0.22, 1) 0.1s;
+  }
+
+  .card-hover:hover {
+    @apply -translate-y-1;
+    box-shadow: 0 40px 120px rgba(0, 0, 0, 0.7), 0 0 60px rgba(255, 255, 255, 0.15) inset, 0 0 80px rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .card-hover:hover::after {
+    opacity: 0.65;
+    animation: shine 2.5s cubic-bezier(0.4, 0, 0.2, 1) 0.4s forwards;
+  }
+
+  .glass-panel {
+    @apply border border-white/20 bg-black/40 backdrop-blur-3xl rounded-[26px];
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 255, 255, 0.1) inset;
+    transition: transform 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1),
+                border-color 0.3s ease,
+                background-color 0.3s ease;
   }
 
   .btn-primary {
-    @apply bg-text-primary text-bg-primary px-4 py-2 rounded-md font-medium hover:bg-text-secondary transition-colors;
+    @apply inline-flex items-center justify-center rounded-full px-6 py-3 bg-white text-black font-medium tracking-wide transition-all duration-300 shadow-[0_20px_45px_rgba(255,255,255,0.25)];
+  }
+
+  .btn-primary:hover {
+    @apply shadow-[0_30px_80px_rgba(255,255,255,0.35)] -translate-y-0.5;
   }
 
   .btn-secondary {
-    @apply bg-bg-tertiary border border-accent-border px-4 py-2 rounded-md font-medium hover:border-text-primary transition-colors;
+    @apply inline-flex items-center justify-center rounded-full px-5 py-2.5 border border-white/20 bg-white/5 text-text-primary backdrop-blur-xl transition-all duration-300;
+  }
+
+  .btn-secondary:hover {
+    @apply border-white/40 bg-white/10 -translate-y-0.5;
   }
 }

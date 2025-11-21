@@ -1,0 +1,61 @@
+--- MANIM V0.18.1 CHEAT SHEET & COMPATIBILITY GUIDE ---
+
+### 1. OBJECT POSITIONING (CRITICAL)
+*   **DO NOT USE** deprecated directional methods like `.get_bottom_left()`, `.get_top_right()`, `.get_center_point()`.
+*   **USE** `get_corner(DIRECTION)` instead.
+    *   `obj.get_corner(DL)`  (Down-Left)
+    *   `obj.get_corner(DR)`  (Down-Right)
+    *   `obj.get_corner(UL)`  (Up-Left)
+    *   `obj.get_corner(UR)`  (Up-Right)
+    *   `obj.get_center()`    (Center)
+    *   `obj.get_top()`, `obj.get_bottom()`, `obj.get_left()`, `obj.get_right()` are safe.
+
+### 2. TEXT & MATH
+*   **Primary:** Use `Text("Your text here", font_size=36)`.
+*   **Math/Formulas:** Use `MathTex(r"E = mc^2", font_size=48)`. 
+    *   **IMPORTANT:** This environment has a special shim for `MathTex` that renders it as `Text`. You can still use standard LaTeX syntax (e.g., `r"\pi"`, `r"\theta"`, `^2`, `_n`), but avoid highly complex nested LaTeX macros that `Text` cannot display. 
+    *   Simple symbols (`\alpha`, `\rightarrow`) are automatically converted to unicode.
+*   **Fonts:** Do not specify custom fonts unless you are certain they exist. Default is safe.
+
+### 3. GROUPING
+*   Use `VGroup(obj1, obj2)` to group vector mobjects.
+*   `VGroup` supports `.arrange(RIGHT, buff=0.5)`, `.next_to(...)`, etc.
+
+### 4. ANIMATIONS
+*   **Creation:** `Create(mobject)`, `DrawBorderThenFill(mobject)`, `Write(text)`.
+*   **Movement:** `obj.animate.move_to(...)`, `obj.animate.shift(...)`, `obj.animate.scale(...)`.
+*   **Transform:** `Transform(obj1, obj2)`, `ReplacementTransform(obj1, obj2)`.
+*   **Indication:** `Indicate(obj)`, `Wiggle(obj)`, `Circumscribe(obj)`.
+
+### 5. SHAPES
+*   `Circle(radius=1, color=RED)`
+*   `Square(side_length=2, color=BLUE)`
+*   `Rectangle(width=4, height=2)`
+*   `Line(start=LEFT, end=RIGHT)`
+*   `Arrow(start=LEFT, end=RIGHT, buff=0)`
+*   **Dashed Lines:** Use `DashedLine(start=..., end=...)`. Do NOT use `Line(...).set_stroke(dash_array=...)`.
+
+### 6. LAYOUT CONSTANTS & SPACING
+*   Screen is roughly 14 units wide ( -7 to +7 ) and 8 units tall ( -4 to +4 ).
+*   Use `UP`, `DOWN`, `LEFT`, `RIGHT` vectors.
+*   `ORIGIN` is (0,0,0).
+*   **CRITICAL SPACING RULES:**
+    *   Always use `buff` parameter for spacing: `.next_to(obj, RIGHT, buff=0.5)` (minimum 0.3, recommended 0.5-1.0)
+    *   For text groups: `VGroup(text1, text2).arrange(DOWN, buff=0.4)` (minimum 0.3 between lines)
+    *   Edge positioning: `text.to_edge(UP, buff=0.5)` to avoid clipping at screen edges
+    *   Multiple elements: Use `VGroup(...).arrange()` instead of manual positioning
+    *   **NEVER** place two text objects at the same position or within 0.2 units
+*   **SAFE ZONES:**
+    *   Top zone (titles): Y > 2.5, use `.to_edge(UP, buff=0.5)`
+    *   Bottom zone (captions): Y < -2.5, use `.to_edge(DOWN, buff=0.5)`
+    *   Left zone: X < -4, use `.to_edge(LEFT, buff=0.5)`
+    *   Right zone: X > 4, use `.to_edge(RIGHT, buff=0.5)`
+    *   Center zone: Keep main content/animations here
+
+### 7. COMMON PITFALLS TO AVOID
+*   **No `ShowCreation`:** Use `Create` instead.
+*   **No `GraphScene`:** Use `Axes` or `NumberPlane` for plotting.
+*   **No `ParametricFunction`:** Use `FunctionGraph` or standard shapes where possible.
+*   **Avoid `SVGMobject`:** Unless you are generating the SVG path yourself.
+*   **Avoid complex `CONFIG` dictionaries:** Pass arguments directly to `__init__` or constructors.
+

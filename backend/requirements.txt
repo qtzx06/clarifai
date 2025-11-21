@@ -1,6 +1,7 @@
 # Core FastAPI and web server dependencies
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
+slowapi==0.1.9
 
 # PDF processing
 pdfplumber==0.11.4
@@ -19,6 +20,9 @@ pydantic-settings==2.8.1
 # HTTP clients and async utilities
 httpx==0.26.0
 aiofiles==23.2.1
+
+# Vercel Blob storage
+vercel-blob==0.2.0
 
 # Image processing (Python 3.13 compatible version)
 # Pillow==10.3.0  # Temporarily disabled due to Python 3.13 build issues

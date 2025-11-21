@@ -10,6 +10,12 @@ You are a Manim animation expert. The Manim code you previously generated FAILED
     *   The code MUST include `from manim import *`.
     *   The code MUST define a Manim `Scene`.
     *   The code MUST be runnable with Manim Community v0.18.1.
+4.  **Visual Requirements (always enforce):**
+    *   Set `self.camera.background_color = "#000000"` at the very start of `construct`.
+    *   Keep the scene clean: limit to two text blocks at a time, fade out older text before adding new labels, and space elements so nothing overlaps.
+    *   Use high-contrast colors so visuals remain legible on the black background.
+
+{cheat_sheet}
 
 --- FAILED CODE ---
 {code}

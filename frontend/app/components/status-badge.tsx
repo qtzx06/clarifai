@@ -13,8 +13,8 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
   const statusConfig = {
     not_generated: {
       color: 'text-text-tertiary',
-      bg: 'bg-bg-tertiary',
-      border: 'border-accent-border',
+      bg: 'bg-white/5',
+      border: 'border-white/15',
       icon: null,
       text: 'Not Generated',
     },
@@ -48,8 +48,8 @@ export function StatusBadge({ status, size = 'md' }: StatusBadgeProps) {
     },
     uploaded: {
       color: 'text-text-secondary',
-      bg: 'bg-bg-tertiary',
-      border: 'border-accent-border',
+      bg: 'bg-white/5',
+      border: 'border-white/15',
       icon: <div className="w-2 h-2 rounded-full bg-text-secondary" />,
       text: 'Uploaded',
     },

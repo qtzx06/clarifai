@@ -23,8 +23,22 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins(self) -> List[str]:
-        """Parse ALLOWED_HOSTS string into list"""
-        return [origin.strip() for origin in self.ALLOWED_HOSTS.split(",") if origin.strip()]
+        """Parse ALLOWED_HOSTS string into list - handles both JSON arrays and comma-separated strings"""
+        if not self.ALLOWED_HOSTS:
+            return ["*"]  # Allow all in development if not set
+        
+        # Try to parse as JSON first (in case it's stored as JSON string)
+        try:
+            import json
+            if self.ALLOWED_HOSTS.strip().startswith("["):
+                origins = json.loads(self.ALLOWED_HOSTS)
+                return origins if isinstance(origins, list) else ["*"]
+        except (json.JSONDecodeError, ValueError):
+            pass
+        
+        # Otherwise, split by comma
+        origins = [origin.strip().strip('"').strip("'") for origin in self.ALLOWED_HOSTS.split(",") if origin.strip()]
+        return origins if origins else ["*"]
 
     # File Storage
     MAX_FILE_SIZE: int = 52428800  # 50MB
@@ -38,11 +52,14 @@ class Settings(BaseSettings):
     # Create directories
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # Create directories relative to backend folder
+        backend_dir = Path(__file__).parent.parent.parent
         for directory in [self.UPLOAD_DIR, self.VIDEO_DIR, self.CLIPS_DIR]:
-            Path(directory).mkdir(exist_ok=True)
+            (backend_dir / directory).mkdir(parents=True, exist_ok=True)
 
     class Config:
-        env_file = ".env"
+        # Look for .env in project root (3 levels up from backend/app/core/config.py)
+        env_file = str(Path(__file__).parent.parent.parent.parent / ".env")
         case_sensitive = True
 
 

@@ -5,7 +5,7 @@ Upload API endpoints for PDF file handling
 import os
 import uuid
 import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Depends, Request
 from fastapi.responses import FileResponse
@@ -13,77 +13,32 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from ...core.config import settings
-from ...core.auth import verify_api_key
+from ...core.auth import verify_api_key, get_current_user_id
 from ...models.paper import Paper, PaperResponse, AnalysisStatus, Concept
 from ...services.pdf_parser import PDFParser
 from ...services.gemini_service import GeminiService
+from ...services.storage import PaperStorage
 
 router = APIRouter()
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 
-# Persistence file path
-PERSISTENCE_FILE = Path("storage/papers_db.json")
-
-# In-memory storage (loaded from disk on startup)
-papers_db: Dict[str, Paper] = {}
-
-
-def load_papers_from_disk():
-    """Load papers from JSON file on startup"""
-    global papers_db
-    if PERSISTENCE_FILE.exists():
-        try:
-            with open(PERSISTENCE_FILE, "r") as f:
-                data = json.load(f)
-                papers_db = {}
-                for paper_id, paper_data in data.items():
-                    # Convert datetime strings back to datetime objects
-                    from datetime import datetime
-                    if "upload_time" in paper_data and isinstance(paper_data["upload_time"], str):
-                        paper_data["upload_time"] = datetime.fromisoformat(paper_data["upload_time"])
-                    
-                    # Handle ConceptVideo datetime fields
-                    if "concept_videos" in paper_data:
-                        for concept_id, video_data in paper_data["concept_videos"].items():
-                            if "created_at" in video_data and isinstance(video_data["created_at"], str):
-                                video_data["created_at"] = datetime.fromisoformat(video_data["created_at"])
-                    
-                    # Reconstruct Paper object from dict
-                    paper = Paper(**paper_data)
-                    papers_db[paper_id] = paper
-            print(f"Loaded {len(papers_db)} papers from disk")
-        except Exception as e:
-            print(f"Error loading papers from disk: {e}")
-            import traceback
-            traceback.print_exc()
-            papers_db = {}
-
-
-def save_papers_to_disk():
-    """Save papers to JSON file"""
-    try:
-        # Ensure directory exists
-        PERSISTENCE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Convert Paper objects to dicts
-        data = {}
-        for paper_id, paper in papers_db.items():
-            data[paper_id] = paper.model_dump(mode='json')
-        
-        with open(PERSISTENCE_FILE, "w") as f:
-            json.dump(data, f, indent=2, default=str)
-    except Exception as e:
-        print(f"Error saving papers to disk: {e}")
-
-
-# Load papers on module import
-load_papers_from_disk()
-
 # Initialize services
 pdf_parser = PDFParser()
 gemini_service = GeminiService()
+
+
+def verify_paper_access(paper: Paper, user_id: Optional[str]) -> None:
+    """
+    Verify that the user can access the paper.
+    Allows access if:
+    - Paper has no user_id (old papers, backward compatibility)
+    - User owns the paper (paper.user_id == user_id)
+    Raises HTTPException if access is denied.
+    """
+    if user_id and paper.user_id is not None and paper.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
 @router.post("/upload")
@@ -92,7 +47,8 @@ async def upload_pdf(
     request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, Any]:
     """
     Upload PDF file and start processing
@@ -120,11 +76,19 @@ async def upload_pdf(
         with open(file_path, "wb") as f:
             f.write(content)
 
-        # Create paper record
-        paper = Paper.create_new(filename=file.filename, file_path=file_path)
+        # Create paper record with user_id
+        print(f"[UPLOAD] Creating paper {paper_id} with user_id: {user_id}")
+        paper = Paper.create_new(filename=file.filename, file_path=file_path, user_id=user_id)
         paper.id = paper_id
-        papers_db[paper_id] = paper
-        save_papers_to_disk()  # Save immediately
+        
+        # Save to storage (database or JSON)
+        if user_id:
+            PaperStorage.save_paper(paper, user_id)
+        else:
+            # For dev mode without user_id, use a default
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+        
+        print(f"[UPLOAD] Paper {paper_id} stored with user_id: {paper.user_id}")
 
         # Start background processing
         background_tasks.add_task(process_paper, paper_id)
@@ -144,12 +108,17 @@ async def upload_pdf(
 
 
 @router.get("/papers")
-async def list_papers() -> Dict[str, Any]:
+async def list_papers(
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
-    List all uploaded papers
+    List all uploaded papers for the current user
     """
+    papers = PaperStorage.list_papers(user_id=user_id)
+    
     paper_responses = []
-    for paper in papers_db.values():
+    for paper in papers:
         paper_responses.append(
             PaperResponse(
                 id=paper.id,
@@ -168,26 +137,37 @@ async def list_papers() -> Dict[str, Any]:
 
 
 @router.get("/papers/{paper_id}")
-async def get_paper(paper_id: str) -> Paper:
+async def get_paper(
+    paper_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Paper:
     """
     Get specific paper details
     """
-    if paper_id not in papers_db:
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    return papers_db[paper_id]
+    
+    verify_paper_access(paper, user_id)
+    return paper
 
 
 @router.get("/papers/{paper_id}/status")
-async def get_paper_status(paper_id: str) -> Dict[str, Any]:
+async def get_paper_status(
+    paper_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
     Get paper processing status
     """
-    if paper_id not in papers_db:
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
-
+    
+    verify_paper_access(paper, user_id)
+    
     # Map backend status to frontend expected values
     status_map = {
         "pending": "uploaded",
@@ -216,10 +196,10 @@ async def process_paper(paper_id: str):
     """
     Background task to process uploaded paper
     """
-    if paper_id not in papers_db:
+    # Skip ownership check for background tasks
+    paper = PaperStorage.get_paper(paper_id, skip_ownership_check=True)
+    if not paper:
         return
-
-    paper = papers_db[paper_id]
 
     try:
         paper.analysis_status = AnalysisStatus.PROCESSING
@@ -310,24 +290,38 @@ async def process_paper(paper_id: str):
 
         paper.analysis_status = AnalysisStatus.COMPLETED
         print(f"Paper processing completed: {paper.title}")
-        save_papers_to_disk()  # Save after processing completes
+        
+        # Save to storage
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
     except Exception as e:
         print(f"Error processing paper {paper_id}: {e}")
         paper.analysis_status = AnalysisStatus.FAILED
-        save_papers_to_disk()  # Save even on failure
+        
+        # Save even on failure
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
 
 @router.get("/papers/{paper_id}/pdf")
-async def serve_pdf(paper_id: str):
+async def serve_pdf(
+    paper_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
     """
     Serve PDF file for embedded viewing
     """
-    if paper_id not in papers_db:
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
-
+    
+    verify_paper_access(paper, user_id)
+    
     if not os.path.exists(paper.file_path):
         raise HTTPException(status_code=404, detail="PDF file not found")
 
@@ -342,14 +336,19 @@ async def serve_pdf(paper_id: str):
 
 
 @router.delete("/papers/{paper_id}")
-async def delete_paper(paper_id: str) -> Dict[str, str]:
+async def delete_paper(
+    paper_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, str]:
     """
     Delete paper and associated files
     """
-    if paper_id not in papers_db:
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
+    
+    verify_paper_access(paper, user_id)
 
     try:
         # Delete file
@@ -359,12 +358,14 @@ async def delete_paper(paper_id: str) -> Dict[str, str]:
         # Delete video files if they exist
         if paper.video_path and os.path.exists(paper.video_path):
             os.remove(paper.video_path)
+        
+        # Delete concept video files
+        for concept_video in paper.concept_videos.values():
+            if concept_video.video_path and os.path.exists(concept_video.video_path):
+                os.remove(concept_video.video_path)
 
-        # Remove from database
-        del papers_db[paper_id]
-
-        # Persist deletion to disk
-        save_papers_to_disk()
+        # Remove from storage
+        PaperStorage.delete_paper(paper_id, user_id)
 
         return {"message": "Paper deleted successfully"}
 

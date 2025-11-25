@@ -1,6 +1,6 @@
 # clarifai
 
-deconstruct complex research papers into digestible concepts and automatically generate video explanations in the style of 3blue1brown. 
+deconstruct complex research papers into digestible concepts and automatically generate video explanations in the style of 3blue1brown.
 
 ---
 
@@ -64,19 +64,24 @@ deconstruct complex research papers into digestible concepts and automatically g
 - **agentic video generation**: a langchain agent uses manim to generate high-quality, 3blue1brown-style animations for each concept.
 - **self-correcting code generation**: the agent makes up to three attempts to generate and render manim code, analyzing the previous error to correct itself.
 - **intelligent scene splitting**: an initial ai call intelligently splits a complex concept into multiple thematic scenes to create a more structured and understandable video narrative.
+- **parallel clip processing**: video clips are rendered in parallel (batches of 3) for 3-4x faster generation.
 - **multi-clip video stitching**: successfully rendered video clips are automatically stitched together into a final, complete video using ffmpeg.
+- **vercel blob storage**: videos are automatically uploaded to vercel blob storage for persistent cdn-backed delivery.
 - **resilient workflow**: the video generation process is fault-tolerant; if a single scene fails to render after multiple attempts, it is skipped, and the final video is created from the successful scenes.
-- **real-time logging**: a websocket connection provides a message-by-message stream of the agent's entire process (prompts, ai responses, errors, and render commands) directly to the frontend.
+- **real-time progress tracking**: websocket connection provides live progress updates with stage indicators and fake progress bar during video generation.
+- **api security**: rate limiting (slowapi) and api key authentication to prevent abuse.
 - **ai-powered code implementation**: generate functional python code examples for any extracted concept.
-- **responsive ui**: a clean and responsive frontend built with next.js and tailwind css provides a seamless user experience.
+- **responsive ui**: a clean and responsive frontend built with next.js and tailwind css with webgl shader background.
 
 ## tech stack
-- **frontend**: next.js, react, typescript, tailwind css
-- **backend**: fastapi, python, uvicorn
-- **ai/ml**: google gemini flash, langchain
-- **video generation**: manim community v0.18.1
+- **frontend**: next.js 15, react 19, typescript, tailwind css, framer motion, webgl shaders
+- **backend**: fastapi, python 3.12, uvicorn, asyncio
+- **ai/ml**: google gemini flash 2.0, langchain
+- **video generation**: manim community v0.19.0
 - **video processing**: ffmpeg
-- **environment management**: uv for isolated python environments, npm for dependency management.
+- **storage**: vercel blob (production), local filesystem (development)
+- **security**: slowapi (rate limiting), api key authentication, cors
+- **deployment**: vercel (frontend), railway (backend), docker
 
 ## prerequisites
 before you begin, ensure you have the following dependencies installed on your system.
@@ -84,74 +89,163 @@ before you begin, ensure you have the following dependencies installed on your s
 ### 1. general
 - **git**: for cloning the repository.
 ### 2. backend dependencies
-- **python 3.12 & 3.13**: the application requires two different python versions. the main backend uses python 3.13, while the video generation agent requires python 3.12.
-- **`uv`**: a fast python package installer and resolver. 
-  - **installation**: `curl -lssf https://astral.sh/uv/install.sh | sh`
+- **python 3.12**: the application requires python 3.12 for both backend and agent (unified environment).
 - **`ffmpeg`**:
   - **macos**: `brew install ffmpeg`
   - **linux**: `sudo apt-get update && sudo apt-get install ffmpeg` or `sudo pacman -s ffmpeg`
   - **windows**: `choco install ffmpeg` or `scoop install ffmpeg`
+- **latex**: required for manim text rendering
+  - **macos**: `brew install --cask mactex-no-gui`
+  - **linux**: `sudo apt-get install texlive texlive-latex-extra texlive-fonts-recommended`
 ### 3. frontend dependencies
 - **node.js**: version 18.x or later.
 - **npm**: usually installed with node.js.
 
-## setup and installation
+## local development setup
+
 1.  **clone the repository**
     ```bash
-    git clone https://github.com/qtzx06/clarifai
+    git clone https://github.com/yourusername/clarifai
     cd clarifai
     ```
 
-2.  **configure environment variables**
-    copy the example environment file and add your api key.
+2.  **backend setup**
     ```bash
+    cd backend
+
+    # create virtual environment
+    python3 -m venv venv
+    source venv/bin/activate  # on windows: venv\Scripts\activate
+
+    # install dependencies
+    pip install -r requirements.txt
+    pip install -r agent_requirements.txt
+
+    # configure environment variables
     cp .env.example .env
-    ```
-    now, open the `.env` file and add your google gemini api key:
-    ```
-    gemini_api_key="your_api_key_here"
+    # edit .env and add your keys:
+    # GEMINI_API_KEY=your_gemini_api_key
+    # API_KEY=your_secret_api_key (optional for dev)
+    # ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8000
+
+    # create storage directories
+    mkdir -p storage/uploads storage/videos clips videos
+
+    # start backend server
+    uvicorn app.main:app --reload --port 8000
     ```
 
-3.  **make scripts executable**
-    this step is required for linux and macos users.
+3.  **frontend setup** (in a new terminal)
     ```bash
-    chmod +x start.sh stop.sh
+    cd frontend
+
+    # install dependencies
+    npm install
+
+    # configure environment variables
+    cp .env.example .env.local
+    # edit .env.local:
+    # NEXT_PUBLIC_API_KEY=your_secret_api_key (must match backend)
+    # NEXT_PUBLIC_API_URL=http://localhost:8000
+    # NEXT_PUBLIC_WS_URL=ws://localhost:8000
+
+    # start development server
+    npm run dev
     ```
 
-4.  **run the application**
-    a single script handles all dependency installation and server startup.
-    ```bash
-    ./start.sh
-    ```
-    this script will:
-    - create and populate two separate python virtual environments (`./backend/venv` and `./backend/agent_env`) using `uv`.
-    - install all python dependencies using `uv pip`.
-    - install all node.js dependencies using `npm`.
-    - create the necessary storage directories (`/backend/clips`, `/backend/videos`).
-    - start the backend and frontend servers in the background.
-
-    once the script is finished, the application will be running:
+4.  **access the application**
     - **frontend**: [http://localhost:3000](http://localhost:3000)
     - **backend api**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-## usage
-1.  open your web browser and navigate to `http://localhost:3000`.
-2.  upload a research paper using the file uploader.
-3.  wait for the ai analysis to complete. key concepts will appear on the right.
-4.  on any concept card, click **"video"** to trigger the agentic video generation process or **"code"** to generate a python implementation.
-5.  you can monitor the real-time progress of the video agent in the "video explanation" panel.
+## production deployment
 
-## stopping the application
-to stop both the frontend and backend servers, run the `stop.sh` script from the project root:
-```bash
-./stop.sh
-```
+### vercel (frontend)
+1. push your code to github
+2. import project to vercel
+3. set environment variables in vercel dashboard:
+   ```
+   NEXT_PUBLIC_API_KEY=your_production_api_key
+   NEXT_PUBLIC_API_URL=https://your-backend.railway.app
+   NEXT_PUBLIC_WS_URL=wss://your-backend.railway.app
+   ```
+4. deploy
+
+### railway (backend)
+1. create new project from github repo
+2. set environment variables:
+   ```
+   API_KEY=your_production_api_key
+   GEMINI_API_KEY=your_gemini_api_key
+   ALLOWED_ORIGINS=https://your-app.vercel.app
+   BLOB_READ_WRITE_TOKEN=vercel_blob_rw_xxxxxx
+   ```
+3. railway will auto-detect the dockerfile and deploy
+4. videos will automatically upload to vercel blob for persistent storage
+
+### vercel blob setup
+1. in vercel dashboard, go to storage → blob
+2. create a new blob store
+3. copy the `BLOB_READ_WRITE_TOKEN`
+4. add it to railway environment variables
+
+## usage
+1.  open your web browser and navigate to the deployed url or `http://localhost:3000`.
+2.  upload a research paper using the drag-and-drop uploader.
+3.  wait for the ai analysis to complete. key concepts will appear on the page.
+4.  on any concept card, click **"generate video"** to trigger the agentic video generation process.
+5.  monitor real-time progress in the video panel with live logs and progress indicators.
+6.  once complete, watch or download the generated video.
+
+## api rate limits
+- **uploads**: 5 per hour per ip
+- **video generation**: 10 per hour per ip
+- **general api**: 100 requests per hour per ip
 
 ## project architecture
 the application is composed of three main parts:
 
-1.  **frontend**: a next.js application that provides the user interface for uploading papers, viewing concepts, and watching the generated videos.
-2.  **backend**: a fastapi server that handles file uploads, orchestrates the analysis and video generation process, and serves the final videos.
-3.  **agent**: a standalone python script (`run_agent.py`) that operates in an isolated environment. it communicates with the gemini api to generate manim scripts and then renders them into video clips. said isolation prevents dependency conflicts between manim and the main backend.
+1.  **frontend**: a next.js application that provides the user interface for uploading papers, viewing concepts, and watching the generated videos. features webgl shader background animations and real-time websocket updates.
 
-the backend and agent communicate via a streaming subprocess pipeline, with logs and results sent back to the backend in real-time and then relayed to the frontend over a websocket connection.
+2.  **backend**: a fastapi server that handles file uploads, orchestrates the analysis and video generation process, and serves the final videos. includes rate limiting, api key authentication, and cors protection.
+
+3.  **agent**: integrated into the backend via async execution. uses langchain and gemini to generate manim scripts, renders them in parallel (batches of 3), and uploads to vercel blob for persistent storage.
+
+the backend and agent communicate via async subprocess pipelines, with logs and results streamed back to the frontend over websocket connections.
+
+## docker deployment
+the backend includes a dockerfile for containerized deployment:
+
+```bash
+# build
+docker build -t clarifai-backend ./backend
+
+# run
+docker run -p 8000:8000 \
+  -e GEMINI_API_KEY=your_key \
+  -e API_KEY=your_api_key \
+  -e ALLOWED_ORIGINS=https://your-frontend.vercel.app \
+  -e BLOB_READ_WRITE_TOKEN=your_blob_token \
+  clarifai-backend
+```
+
+## troubleshooting
+
+### videos return 404 in production
+- ensure `BLOB_READ_WRITE_TOKEN` is set in railway
+- check railway logs for upload errors
+- verify vercel blob store is created and accessible
+
+### cors errors
+- ensure `ALLOWED_ORIGINS` in railway includes your vercel url
+- check that frontend `NEXT_PUBLIC_API_URL` matches railway backend url
+
+### video generation fails
+- check that `GEMINI_API_KEY` is valid
+- ensure ffmpeg and latex are installed (handled by dockerfile in production)
+- verify sufficient memory allocation in railway (recommend 2GB+)
+
+## contributing
+contributions are welcome! please feel free to submit a pull request.
+
+## license
+mit license - see license file for details.

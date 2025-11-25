@@ -43,6 +43,7 @@ class Concept(BaseModel):
     text_snippets: List[str] = []
     related_concepts: List[str] = []
     concept_type: str = "conceptual"
+    code: Optional[str] = None  # Generated Python code implementation
     
     def model_dump(self, **kwargs):
         """Override model_dump to use 'type' instead of 'concept_type' for frontend compatibility"""
@@ -60,6 +61,7 @@ class Concept(BaseModel):
 
 class Paper(BaseModel):
     id: str
+    user_id: Optional[str] = None  # User who uploaded the paper
     title: str
     authors: List[str] = []
     abstract: str = ""
@@ -84,10 +86,11 @@ class Paper(BaseModel):
     concept_videos: Dict[str, ConceptVideo] = {}
 
     @classmethod
-    def create_new(cls, filename: str, file_path: str) -> "Paper":
+    def create_new(cls, filename: str, file_path: str, user_id: Optional[str] = None) -> "Paper":
         """Create a new paper instance with generated ID"""
         return cls(
             id=str(uuid.uuid4()),
+            user_id=user_id,
             title="",
             filename=filename,
             file_path=file_path,

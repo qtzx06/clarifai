@@ -3,19 +3,35 @@ Analysis API endpoints for paper concept extraction and clarification
 """
 
 import uuid
-from typing import Dict, Any, List
-from fastapi import APIRouter, HTTPException
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
 
 from ...models.paper import ConceptResponse, Concept
 from ...services.gemini_service import GeminiService
-from .upload import papers_db, save_papers_to_disk  # Import shared papers database and save function
+from ...services.storage import PaperStorage
+from ...core.auth import get_current_user_id, verify_api_key
 
 router = APIRouter()
 
 # Initialize services
 gemini_service = GeminiService()
+
+
+def verify_paper_ownership(paper_id: str, user_id: Optional[str]) -> None:
+    """
+    Verify that the user can access the paper. Raises HTTPException if not.
+    Allows access if paper has no user_id (old papers) or user owns the paper.
+    """
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
+    
+    # Verify ownership if user_id is provided
+    # Allow access if paper has no user_id (old papers) or user owns the paper
+    if user_id and paper.user_id is not None and paper.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
 
 class AnalyzeRequest(BaseModel):
@@ -34,14 +50,18 @@ class ClarifyRequest(BaseModel):
 
 
 @router.post("/papers/{paper_id}/analyze")
-async def analyze_paper(paper_id: str) -> Dict[str, Any]:
+async def analyze_paper(
+    paper_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
     Trigger analysis of an uploaded paper
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     if not paper.content:
         raise HTTPException(
@@ -114,7 +134,12 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
         paper.full_analysis = analysis_result["full_analysis"]
 
         print(f"Analysis completed for paper: {paper.title}")
-        save_papers_to_disk()  # Save after analysis
+        
+        # Save to storage
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
         return {
             "message": "Analysis completed successfully",
@@ -128,14 +153,18 @@ async def analyze_paper(paper_id: str) -> Dict[str, Any]:
 
 
 @router.get("/papers/{paper_id}/concepts")
-async def get_paper_concepts(paper_id: str):
+async def get_paper_concepts(
+    paper_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+):
     """
     Get extracted concepts for a paper
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     concepts_with_status = []
     for concept in paper.concepts:
@@ -149,6 +178,7 @@ async def get_paper_concepts(paper_id: str):
             "text_snippets": concept.text_snippets,
             "related_concepts": concept.related_concepts,
             "type": concept.concept_type,
+            "code": concept.code if hasattr(concept, 'code') else None,  # Include code if it exists
         }
 
         # Get video status from concept_videos if it exists
@@ -184,33 +214,49 @@ async def get_paper_concepts(paper_id: str):
 
 
 @router.delete("/papers/{paper_id}/concepts/{concept_id}")
-async def delete_concept(paper_id: str, concept_id: str) -> Dict[str, str]:
+async def delete_concept(
+    paper_id: str,
+    concept_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, str]:
     """
     Delete a concept from a paper
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
+    
     initial_concept_count = len(paper.concepts)
     paper.concepts = [c for c in paper.concepts if c.id != concept_id]
 
     if len(paper.concepts) == initial_concept_count:
         raise HTTPException(status_code=404, detail="Concept not found")
 
+    # Save updated paper
+    if paper.user_id:
+        PaperStorage.save_paper(paper, paper.user_id)
+    else:
+        PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+
     print(f"Deleted concept {concept_id} from paper {paper_id}")
     return {"message": "Concept deleted successfully"}
 
 
 @router.post("/papers/{paper_id}/clarify")
-async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, Any]:
+async def clarify_text(
+    paper_id: str,
+    request: ClarifyRequest,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
     Answer questions about a paper with conversation history support
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     try:
         # Support both question format and text_snippet format
@@ -257,14 +303,18 @@ async def clarify_text(paper_id: str, request: ClarifyRequest) -> Dict[str, Any]
 
 
 @router.get("/papers/{paper_id}/insights")
-async def get_paper_insights(paper_id: str) -> Dict[str, Any]:
+async def get_paper_insights(
+    paper_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
     Get key insights from paper analysis
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     return {
         "paper_id": paper_id,
@@ -279,14 +329,17 @@ async def get_paper_insights(paper_id: str) -> Dict[str, Any]:
 
 
 @router.post("/papers/{paper_id}/extract-concepts")
-async def extract_concepts(paper_id: str) -> ConceptResponse:
+async def extract_concepts(
+    paper_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> ConceptResponse:
     """
     Re-extract or refresh concepts for a paper using Gemini
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     if not paper.content:
         raise HTTPException(status_code=400, detail="Paper content not available")
@@ -352,7 +405,12 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
         print(
             f"Concepts refreshed for paper: {paper.title} ({len(paper.concepts)} valid concepts)"
         )
-        save_papers_to_disk()  # Save after concept extraction
+        
+        # Save to storage
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
         return ConceptResponse(concepts=paper.concepts, total_count=len(paper.concepts))
 
@@ -364,14 +422,17 @@ async def extract_concepts(paper_id: str) -> ConceptResponse:
 
 
 @router.post("/papers/{paper_id}/generate-additional-concept")
-async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
+async def generate_additional_concept(
+    paper_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
     Generate ONE additional concept for a paper, considering existing concepts
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     if not paper.content:
         raise HTTPException(status_code=400, detail="Paper content not available")
@@ -431,7 +492,12 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
 
             # Add to existing concepts (don't replace)
             paper.concepts.append(new_concept)
-            save_papers_to_disk()  # Save after adding concept
+            
+            # Save to storage
+            if paper.user_id:
+                PaperStorage.save_paper(paper, paper.user_id)
+            else:
+                PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
             print(f"Generated additional concept: '{new_concept.name}'")
 
@@ -466,14 +532,17 @@ async def generate_additional_concept(paper_id: str) -> Dict[str, Any]:
 async def get_code_implementation(
     paper_id: str,
     concept_name: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, str]:
     """
     Generate a Python code implementation for a given concept.
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
+    
     # Decode URL-encoded concept name
     from urllib.parse import unquote
     decoded_concept_name = unquote(concept_name)
@@ -486,6 +555,17 @@ async def get_code_implementation(
         code = await gemini_service.generate_python_implementation(
             concept.name, concept.description
         )
+        
+        # Save the generated code to the concept
+        concept.code = code
+        
+        # Save the updated paper with the code
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+        
+        print(f"Code generated and saved for concept: {decoded_concept_name}")
         return {"code": code}
     except Exception as e:
         print(f"Code generation failed: {e}")
@@ -493,14 +573,17 @@ async def get_code_implementation(
 
 
 @router.get("/papers/{paper_id}/summary")
-async def get_paper_summary(paper_id: str) -> Dict[str, Any]:
+async def get_paper_summary(
+    paper_id: str,
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
     """
     Get a comprehensive summary of the paper analysis
     """
-    if paper_id not in papers_db:
+    verify_paper_ownership(paper_id, user_id)
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
 
     # Calculate concept importance distribution
     importance_distribution = {

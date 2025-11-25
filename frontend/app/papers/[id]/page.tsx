@@ -30,6 +30,41 @@ function fixAbstractSpacing(text: string): string {
   return fixed;
 }
 
+// Render scene guide (captions) for a video
+function renderSceneGuide(video: VideoModalData | null, mode: 'inline' | 'modal') {
+  if (!video || !video.captions || video.captions.length === 0) {
+    return (
+      <div className="text-sm text-text-tertiary">
+        No captions available for this video.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {video.captions.map((caption, index) => (
+        <div
+          key={index}
+          className={`rounded-lg border ${
+            mode === 'modal'
+              ? 'border-white/10 bg-white/5 p-3'
+              : 'border-white/5 bg-white/[0.02] p-2.5'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-semibold text-text-secondary min-w-[2rem]">
+              {caption.clip ?? index + 1}
+            </span>
+            <p className="text-sm text-text-primary leading-relaxed flex-1">
+              {caption.text || 'No description available'}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== 'undefined'
@@ -91,17 +126,29 @@ export default function PaperDetailPage() {
     }
   }, [paper?.status]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom only when new messages are actually added
+  const prevMessagesLengthRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isAsking]);
+    // Only auto-scroll if:
+    // 1. A new message was actually added (length increased)
+    // 2. User is likely at the bottom (check if scroll is near bottom)
+    const messagesContainer = messagesEndRef.current?.parentElement;
+    if (messages.length > prevMessagesLengthRef.current && messagesContainer) {
+      const isNearBottom = 
+        messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 100;
+      
+      // Only scroll if user is near bottom (within 100px) or this is the first message
+      if (isNearBottom || prevMessagesLengthRef.current === 0) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length]); // Only depend on length, not the full array
 
-  // Auto-scroll logs when new log messages arrive
-  useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [videoLogs]);
+  // Don't auto-scroll logs during generation - let user control their view
+  // Removed auto-scroll to prevent forced scrolling beyond view
 
-  // Fake progress bar that smoothly increases to 99% over ~30 seconds
+  // Fake progress bar that smoothly increases to 99% over ~90 seconds
   useEffect(() => {
     if (!generatingConceptId) {
       setFakeProgress(0);
@@ -109,7 +156,7 @@ export default function PaperDetailPage() {
     }
 
     const startTime = Date.now();
-    const duration = 30000; // 30 seconds to reach 99%
+    const duration = 90000; // 90 seconds to reach 99%
     const maxProgress = 99;
 
     const interval = setInterval(() => {
@@ -306,7 +353,10 @@ export default function PaperDetailPage() {
     handleGenerateVideo(concept.id);
   };
 
-  // Automatically load the latest ready video
+  // Track previous concept states to detect when video becomes ready
+  const prevConceptsRef = useRef<Concept[]>([]);
+  
+  // Automatically load the latest ready video and scroll to it when generation completes
   useEffect(() => {
     const readyConcept = concepts.find(
       (concept) => concept.video_status === 'ready' && concept.video_url
@@ -316,16 +366,34 @@ export default function PaperDetailPage() {
       if (!generatingConceptId) {
         setCurrentVideo(null);
       }
+      prevConceptsRef.current = concepts;
       return;
     }
 
     const videoData = createVideoData(readyConcept);
+    
+    // Check if this concept just transitioned from generating to ready
+    const prevConcept = prevConceptsRef.current.find(c => c.id === readyConcept.id);
+    const justBecameReady = prevConcept?.video_status === 'generating' && readyConcept.video_status === 'ready';
+    const wasGenerating = generatingConceptId === readyConcept.id;
+    
     setCurrentVideo((prev) => {
+      // If this is a new video or the URL changed, update it
       if (!prev || prev.id !== videoData.id || prev.url !== videoData.url) {
+        // If we were just generating this video or it just became ready, scroll to it
+        if (justBecameReady || wasGenerating) {
+          // Small delay to ensure video element is rendered
+          setTimeout(() => {
+            videoPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 500);
+        }
         return videoData;
       }
       return prev;
     });
+    
+    // Update previous concepts for next comparison
+    prevConceptsRef.current = concepts;
   }, [concepts, generatingConceptId]);
 
   // Connect to WebSocket when video generation starts

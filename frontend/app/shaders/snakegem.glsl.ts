@@ -35,8 +35,8 @@ void mainImage(out vec4 O, vec2 I) {
     vec3 p, c = vec3(0.0);
     vec3 r = iResolution;
 
-    // Start with faster rotation, slow down to normal
-    float rotSpeed = mix(1.2, 0.5, introEase);
+    // Start with faster rotation, slow down to slower speed
+    float rotSpeed = mix(1.5, 0.8, introEase);
     mat2 R = mat2(cos(iTime / rotSpeed + vec4(0.0, 33.0, 11.0, 0.0)));
 
     float d = 0.0;

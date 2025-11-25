@@ -103,23 +103,43 @@ printf "%b\n" "${YELLOW}Installing agent dependencies from backend/agent_require
 "$AGENT_ENV_DIR/bin/python" -m pip install -r backend/agent_requirements.txt
 printf "%b\n" "${GREEN}Agent environment setup complete.${NC}"
 
-# --- Backend Setup ---
-printf "\n%b\n" "${BLUE}Setting up backend...${NC}"
-cd backend
+# --- Root Environment Setup ---
+printf "\n%b\n" "${BLUE}Setting up root Python environment...${NC}"
 
-if [ ! -d "venv" ]; then
-    printf "%b\n" "${YELLOW}Creating main backend virtual environment...${NC}"
-    uv venv venv
+# Check for .env file in root
+if [ ! -f ".env" ]; then
+    printf "%b\n" "${RED}ERROR: .env file not found in root directory!${NC}"
+    printf "%b\n" "${YELLOW}Please create .env file:${NC}"
+    printf "%b\n" "  1. Copy .env.example to .env"
+    printf "%b\n" "  2. Add your GEMINI_API_KEY (required)"
+    printf "%b\n" "  3. Optionally add Supabase credentials for multi-user support"
+    printf "%b\n" ""
+    printf "%b\n" "${YELLOW}Quick start: cp .env.example .env${NC}"
+    exit 1
 fi
 
-printf "%b\n" "${YELLOW}Activating and installing main backend dependencies...${NC}"
-source venv/bin/activate && uv pip install -r requirements.txt
+# Check if Supabase is configured
+if grep -q "^SUPABASE_URL=$" .env || ! grep -q "^SUPABASE_URL=" .env; then
+    printf "%b\n" "${YELLOW}Running in DEV MODE (no Supabase configured)${NC}"
+    printf "%b\n" "${YELLOW}To enable multi-user support, add Supabase credentials to .env${NC}\n"
+else
+    printf "%b\n" "${GREEN}Supabase configured - multi-user mode enabled${NC}\n"
+fi
+
+if [ ! -d "venv" ]; then
+    printf "%b\n" "${YELLOW}Creating root virtual environment with Python 3.12...${NC}"
+    uv venv --python 3.12 venv
+fi
+
+printf "%b\n" "${YELLOW}Installing backend dependencies in root environment...${NC}"
+source venv/bin/activate && uv pip install -r backend/requirements.txt
 
 printf "%b\n" "${YELLOW}Creating storage directories...${NC}"
-mkdir -p storage clips videos
+mkdir -p backend/storage backend/clips backend/videos
 
 printf "%b\n" "${GREEN}Starting backend server...${NC}"
-nohup ./venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+cd backend
+nohup ../venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > ../backend.pid
 cd ..

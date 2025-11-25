@@ -6,6 +6,8 @@ const nextConfig = {
 
   webpack: (config) => {
     config.resolve.alias['@'] = path.join(__dirname, '');
+    // Ensure proper module resolution
+    config.resolve.extensions = ['.js', '.jsx', '.ts', '.tsx', '.json'];
     return config;
   },
 

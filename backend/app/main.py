@@ -50,12 +50,32 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["100/hour"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS middleware - restrict to specific origins
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
+# CORS middleware - use settings for proper origin parsing
+# Parse ALLOWED_ORIGINS from environment variable (supports JSON arrays or comma-separated)
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", settings.ALLOWED_ORIGINS)
+if not allowed_origins_env:
+    allowed_origins_env = "http://localhost:3000,http://localhost:8000"
+
+# Try to parse as JSON first (in case it's stored as JSON string)
+try:
+    import json
+    if allowed_origins_env.strip().startswith("["):
+        allowed_origins = json.loads(allowed_origins_env)
+    else:
+        # Split by comma
+        allowed_origins = [origin.strip().strip('"').strip("'") for origin in allowed_origins_env.split(",") if origin.strip()]
+except (json.JSONDecodeError, ValueError):
+    # Fallback to comma-separated
+    allowed_origins = [origin.strip().strip('"').strip("'") for origin in allowed_origins_env.split(",") if origin.strip()]
+
+if not allowed_origins:
+    allowed_origins = ["*"]  # Allow all in development if not set
+
+print(f"[CORS] Allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,  # Specific origins only
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -11,8 +11,12 @@ from slowapi.util import get_remote_address
 
 from ...models.paper import Concept, VideoStatus, ConceptVideo
 from ...core.config import settings
-from ...core.auth import verify_api_key
-from .upload import papers_db, save_papers_to_disk
+from ...core.auth import verify_api_key, get_current_user_id
+from ...services.storage import PaperStorage
+
+# Per-user video generation limits
+DAILY_VIDEO_LIMIT = 5  # Free tier: 5 videos per day per user
+MAX_CONCURRENT_GENERATIONS = 3  # Max 3 videos generating at once per user
 
 # Vercel Blob storage (optional, falls back to local storage)
 try:
@@ -251,7 +255,8 @@ async def upload_to_vercel_blob(file_path: str, file_name: str) -> Optional[str]
 
 
 async def generate_video_background(paper_id: str, concept_id: str, concept: Concept):
-    paper = papers_db.get(paper_id)
+    # Skip ownership check for background tasks
+    paper = PaperStorage.get_paper(paper_id, skip_ownership_check=True)
     if not paper:
         return
     concept_video = paper.concept_videos.get(concept_id)
@@ -299,7 +304,10 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
         if not clip_paths:
             await log("Agent did not produce any successful video clips.")
             concept_video.status = VideoStatus.FAILED
-            save_papers_to_disk()
+            if paper.user_id:
+                PaperStorage.save_paper(paper, paper.user_id)
+            else:
+                PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
             return
 
         await log(
@@ -332,16 +340,48 @@ async def generate_video_background(paper_id: str, concept_id: str, concept: Con
 
             concept_video.video_path = accessible_path
             concept_video.status = VideoStatus.COMPLETED
-            save_papers_to_disk()
+            if paper.user_id:
+                PaperStorage.save_paper(paper, paper.user_id)
+            else:
+                PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
         else:
             await log("Stitching failed.")
             concept_video.status = VideoStatus.FAILED
-            save_papers_to_disk()
+            if paper.user_id:
+                PaperStorage.save_paper(paper, paper.user_id)
+            else:
+                PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
 
     except Exception as e:
         await log(f"An unexpected error occurred: {e}")
         concept_video.status = VideoStatus.FAILED
-        save_papers_to_disk()
+        if paper.user_id:
+            PaperStorage.save_paper(paper, paper.user_id)
+        else:
+            PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
+
+
+async def get_video_duration(video_path: str) -> float:
+    """Get video duration in seconds using ffprobe"""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
+            return float(stdout.decode().strip())
+    except Exception as e:
+        print(f"Error getting video duration: {e}")
+    return 0.0
 
 
 async def stitch_clips_simple(
@@ -352,7 +392,8 @@ async def stitch_clips_simple(
 
     os.makedirs(videos_dir, exist_ok=True)
 
-    output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+    # First, concatenate clips without fade
+    temp_output_path = os.path.join(videos_dir, f"{file_prefix}_temp.mp4")
     concat_file_path = os.path.join(videos_dir, f"{file_prefix}_concat.txt")
 
     with open(concat_file_path, "w", encoding="utf-8") as f:
@@ -361,7 +402,8 @@ async def stitch_clips_simple(
             safe_path = str(path).replace("\\", "/").replace("'", "'\\''")
             f.write(f"file '{safe_path}'\n")
 
-    cmd = [
+    # Step 1: Concatenate clips
+    concat_cmd = [
         "ffmpeg",
         "-y",
         "-f",
@@ -372,24 +414,75 @@ async def stitch_clips_simple(
         concat_file_path,
         "-c",
         "copy",
-        output_path,
+        temp_output_path,
     ]
 
     process = await asyncio.create_subprocess_exec(
-        *cmd,
+        *concat_cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await process.communicate()
 
     if process.returncode != 0:
-        print("--- FFMPEG STITCHING FAILED ---")
+        print("--- FFMPEG CONCATENATION FAILED ---")
         print(f"STDOUT:\n{stdout.decode()}")
         print(f"STDERR:\n{stderr.decode()}")
+        if os.path.exists(concat_file_path):
+            os.remove(concat_file_path)
         return None
 
     os.remove(concat_file_path)
-    return output_path
+
+    # Step 2: Get video duration and add fade out
+    duration = await get_video_duration(temp_output_path)
+    fade_duration = 1.0  # Fade out over 1 second
+    fade_start = max(0.0, duration - fade_duration)
+
+    if duration > fade_duration:
+        # Apply fade out to the final video
+        output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+        fade_cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", temp_output_path,
+            "-vf", f"fade=t=out:st={fade_start}:d={fade_duration}",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-c:a", "copy",  # Copy audio without re-encoding
+            output_path,
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *fade_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            print("--- FFMPEG FADE OUT FAILED ---")
+            print(f"STDOUT:\n{stdout.decode()}")
+            print(f"STDERR:\n{stderr.decode()}")
+            # Fallback: use temp file without fade
+            if os.path.exists(temp_output_path):
+                os.rename(temp_output_path, output_path)
+                return output_path
+            return None
+
+        # Clean up temp file
+        if os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
+        
+        return output_path
+    else:
+        # Video too short for fade, just rename temp file
+        output_path = os.path.join(videos_dir, f"{file_prefix}_final.mp4")
+        if os.path.exists(temp_output_path):
+            os.rename(temp_output_path, output_path)
+            return output_path
+        return None
 
 
 @router.post("/papers/{paper_id}/concepts/{concept_id}/generate-video")
@@ -400,30 +493,43 @@ async def generate_video_for_concept(
     concept_id: str,
     background_tasks: BackgroundTasks,
     video_request: GenerateVideoRequest = GenerateVideoRequest(),
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
 ) -> Dict[str, str]:
-    if paper_id not in papers_db:
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
+    
+    # Verify ownership if user_id is provided
+    # Allow access if paper has no user_id (old papers) or user owns the paper
+    if user_id and paper.user_id is not None and paper.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     concept = next((c for c in paper.concepts if c.id == concept_id), None)
 
     if not concept:
         raise HTTPException(status_code=404, detail="Concept not found")
+
+    # Per-user rate limiting (if user_id is available)
+    if user_id:
+        daily_count = PaperStorage.count_user_videos_today(user_id)
+        if daily_count >= DAILY_VIDEO_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily limit of {DAILY_VIDEO_LIMIT} video generations reached. Try again tomorrow."
+            )
+        
+        concurrent_count = PaperStorage.count_user_concurrent_videos(user_id)
+        if concurrent_count >= MAX_CONCURRENT_GENERATIONS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"You have {MAX_CONCURRENT_GENERATIONS} videos currently generating. Please wait for one to complete."
+            )
 
     # Check if this specific concept already has a video being generated
     existing_video = paper.concept_videos.get(concept_id)
     if existing_video and existing_video.status == VideoStatus.GENERATING:
         raise HTTPException(
             status_code=400, detail="A video is already being generated for this concept."
-        )
-
-    # Allow multiple videos to be generated simultaneously for different concepts
-    # But check if there are too many concurrent generations (limit to 3)
-    generating_count = sum(1 for cv in paper.concept_videos.values() if cv.status == VideoStatus.GENERATING)
-    if generating_count >= 3:
-        raise HTTPException(
-            status_code=400, detail="Too many videos are being generated simultaneously. Please wait for one to complete."
         )
 
     paper.concept_videos[concept_id] = ConceptVideo(
@@ -434,7 +540,10 @@ async def generate_video_for_concept(
     )
     
     # Persist the status change immediately so frontend polling sees it
-    save_papers_to_disk()
+    if paper.user_id:
+        PaperStorage.save_paper(paper, paper.user_id)
+    else:
+        PaperStorage.save_paper(paper, "00000000-0000-0000-0000-000000000000")
     print(f"[VIDEO] Set video_status to GENERATING for concept {concept_id}, paper {paper_id}")
 
     background_tasks.add_task(
@@ -448,11 +557,20 @@ async def generate_video_for_concept(
 
 
 @router.get("/papers/{paper_id}/concepts/{concept_id}/video/status")
-async def get_concept_video_status(paper_id: str, concept_id: str) -> Dict[str, Any]:
-    if paper_id not in papers_db:
+async def get_concept_video_status(
+    paper_id: str,
+    concept_id: str,
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
+    paper = PaperStorage.get_paper(paper_id, user_id)
+    if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
-
-    paper = papers_db[paper_id]
+    
+    # Verify ownership if user_id is provided
+    # Allow access if paper has no user_id (old papers) or user owns the paper
+    if user_id and paper.user_id is not None and paper.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     concept_video = paper.concept_videos.get(concept_id)
 
     if not concept_video:
@@ -471,4 +589,32 @@ async def get_concept_video_status(paper_id: str, concept_id: str) -> Dict[str, 
         "video_url": concept_video.video_path,
         "logs": concept_video.logs,
         "captions": concept_video.captions,
+    }
+
+
+@router.get("/usage-stats")
+async def get_usage_stats(
+    api_key: str = Depends(verify_api_key),
+    user_id: Optional[str] = Depends(get_current_user_id)
+) -> Dict[str, Any]:
+    """Get video generation usage statistics for the current user"""
+    if not user_id:
+        # Return default stats for unauthenticated users
+        return {
+            "daily_limit": DAILY_VIDEO_LIMIT,
+            "today_count": 0,
+            "remaining_today": DAILY_VIDEO_LIMIT,
+            "currently_generating": 0,
+            "max_concurrent": MAX_CONCURRENT_GENERATIONS,
+        }
+    
+    today_count = PaperStorage.count_user_videos_today(user_id)
+    concurrent_count = PaperStorage.count_user_concurrent_videos(user_id)
+    
+    return {
+        "daily_limit": DAILY_VIDEO_LIMIT,
+        "today_count": today_count,
+        "remaining_today": max(0, DAILY_VIDEO_LIMIT - today_count),
+        "currently_generating": concurrent_count,
+        "max_concurrent": MAX_CONCURRENT_GENERATIONS,
     }

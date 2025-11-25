@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, Clock, Search, Trash2 } from 'lucide-react';
 import { Navigation } from '../components/navigation';
 import { StatusBadge } from '../components/status-badge';
-import { deletePaper } from '../lib/api';
+import { deletePaper, listPapers } from '../lib/api';
+import { useAuth } from '../providers/auth-provider';
 
 interface PaperItem {
   id: string;
@@ -19,6 +21,8 @@ interface PaperItem {
 }
 
 export default function PapersPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [papers, setPapers] = useState<PaperItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -30,14 +34,7 @@ export default function PapersPage() {
     const loadPapers = async () => {
       try {
         setIsLoading(true);
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/papers`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch papers');
-        }
-        
-        const data = await response.json();
-        const papersData = data.papers || [];
+        const papersData = await listPapers();
         
         // Map backend response to frontend format
         // Backend returns: analysis_status ("pending", "processing", "completed", "failed")
@@ -69,8 +66,17 @@ export default function PapersPage() {
       }
     };
 
-    loadPapers();
-  }, []);
+    if (user) {
+      loadPapers();
+    }
+  }, [user]);
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
 
   const filteredPapers = papers.filter((paper) =>
     paper.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

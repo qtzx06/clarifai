@@ -18,8 +18,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
+    # Supabase Configuration (for multi-user support)
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
+    SUPABASE_DATABASE_URL: str = ""
+
     # CORS Settings
     ALLOWED_HOSTS: str = "http://localhost:3000,http://127.0.0.1:3000,https://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
 
     @property
     def allowed_origins(self) -> List[str]:
@@ -61,6 +68,8 @@ class Settings(BaseSettings):
         # Look for .env in project root (3 levels up from backend/app/core/config.py)
         env_file = str(Path(__file__).parent.parent.parent.parent / ".env")
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields (like NEXT_PUBLIC_* for frontend)
+        env_ignore_empty = True  # Ignore empty environment variables
 
 
 # Global settings instance

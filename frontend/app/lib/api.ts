@@ -24,11 +24,37 @@ const WS_URL = resolveWsUrl();
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
-const getHeaders = (): HeadersInit => {
-  const headers: HeadersInit = {};
-  if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
+const getHeaders = async (): Promise<Record<string, string>> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  
+  // Try to get Supabase auth token first
+  if (typeof window !== 'undefined') {
+    try {
+      const { getSessionToken } = await import('./supabase');
+      const token = await getSessionToken();
+      console.log('[API] getHeaders: token retrieved:', token ? `${token.substring(0, 20)}...` : 'null');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('[API] getHeaders: Authorization header set');
+      } else {
+        console.log('[API] getHeaders: No token available');
+      }
+    } catch (error) {
+      // Supabase not available, fall back to API key
+      console.error('[API] getHeaders: Error getting token:', error);
+      console.debug('Supabase auth not available, using API key if configured');
+    }
   }
+  
+  // Fallback to API key if no auth token
+  if (API_KEY && !headers['Authorization']) {
+    headers['X-API-Key'] = API_KEY;
+    console.log('[API] getHeaders: Using API key fallback');
+  }
+  
+  console.log('[API] getHeaders: Final headers:', Object.keys(headers), 'Has Auth:', !!headers['Authorization']);
   return headers;
 };
 
@@ -66,15 +92,27 @@ export interface VideoGenerationStatus {
   video_url?: string;
 }
 
+export interface UsageStats {
+  daily_limit: number;
+  today_count: number;
+  remaining_today: number;
+  currently_generating: number;
+  max_concurrent: number;
+}
+
 // Paper API
 export async function uploadPaper(file: File): Promise<Paper> {
   const formData = new FormData();
   formData.append('file', file);
 
   try {
+    const headers = await getHeaders();
+    // Remove Content-Type for FormData - browser will set it with boundary
+    delete (headers as any)['Content-Type'];
+    
     const response = await fetch(`${API_URL}/api/upload`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers,
       body: formData,
     });
 
@@ -107,8 +145,13 @@ export async function uploadPaper(file: File): Promise<Paper> {
 }
 
 export async function listPapers(): Promise<Paper[]> {
-  const response = await fetch(`${API_URL}/api/papers`);
+  const headers = await getHeaders();
+  console.log('[API] listPapers: Making request with headers:', Object.keys(headers));
+  const response = await fetch(`${API_URL}/api/papers`, {
+    headers,
+  });
 
+  console.log('[API] listPapers: Response status:', response.status);
   if (!response.ok) {
     throw new Error('Failed to fetch papers');
   }
@@ -118,7 +161,10 @@ export async function listPapers(): Promise<Paper[]> {
 }
 
 export async function getPaper(paperId: string): Promise<Paper> {
-  const response = await fetch(`${API_URL}/api/papers/${paperId}/status`);
+  const headers = await getHeaders();
+  const response = await fetch(`${API_URL}/api/papers/${paperId}/status`, {
+    headers,
+  });
 
   if (!response.ok) {
     throw new Error('Failed to fetch paper');
@@ -128,19 +174,24 @@ export async function getPaper(paperId: string): Promise<Paper> {
 }
 
 export async function deletePaper(paperId: string): Promise<void> {
+  const headers = await getHeaders();
   const response = await fetch(`${API_URL}/api/papers/${paperId}`, {
     method: 'DELETE',
-    headers: getHeaders(),
+    headers,
   });
 
   if (!response.ok) {
-    throw new Error('Failed to delete paper');
+    const errorText = await response.text();
+    console.error('Delete failed:', response.status, errorText);
+    throw new Error(`Failed to delete paper: ${response.status} ${errorText}`);
   }
 }
 
 export async function analyzePaper(paperId: string): Promise<void> {
+  const headers = await getHeaders();
   const response = await fetch(`${API_URL}/api/papers/${paperId}/analyze`, {
     method: 'POST',
+    headers,
   });
 
   if (!response.ok) {
@@ -149,7 +200,10 @@ export async function analyzePaper(paperId: string): Promise<void> {
 }
 
 export async function getConcepts(paperId: string): Promise<Concept[]> {
-  const response = await fetch(`${API_URL}/api/papers/${paperId}/concepts`);
+  const headers = await getHeaders();
+  const response = await fetch(`${API_URL}/api/papers/${paperId}/concepts`, {
+    headers,
+  });
 
   if (!response.ok) {
     throw new Error('Failed to fetch concepts');
@@ -160,8 +214,10 @@ export async function getConcepts(paperId: string): Promise<Concept[]> {
 }
 
 export async function generateAdditionalConcept(paperId: string): Promise<Concept> {
+  const headers = await getHeaders();
   const response = await fetch(`${API_URL}/api/papers/${paperId}/generate-additional-concept`, {
     method: 'POST',
+    headers,
   });
 
   if (!response.ok) {
@@ -177,7 +233,7 @@ export async function generateVideo(paperId: string, conceptId: string): Promise
     `${API_URL}/api/papers/${paperId}/concepts/${conceptId}/generate-video`,
     {
       method: 'POST',
-      headers: getHeaders(),
+      headers: await getHeaders(),
     }
   );
 
@@ -190,8 +246,10 @@ export async function getVideoStatus(
   paperId: string,
   conceptId: string
 ): Promise<VideoGenerationStatus> {
+  const headers = await getHeaders();
   const response = await fetch(
-    `${API_URL}/api/papers/${paperId}/concepts/${conceptId}/video/status`
+    `${API_URL}/api/papers/${paperId}/concepts/${conceptId}/video/status`,
+    { headers }
   );
 
   if (!response.ok) {
@@ -206,9 +264,13 @@ export async function getCodeImplementation(
   paperId: string,
   conceptName: string
 ): Promise<{ code: string }> {
+  const headers = await getHeaders();
   const response = await fetch(
     `${API_URL}/api/papers/${paperId}/concepts/${encodeURIComponent(conceptName)}/implement`,
-    { method: 'POST' }
+    { 
+      method: 'POST',
+      headers,
+    }
   );
 
   if (!response.ok) {
@@ -231,9 +293,7 @@ export async function askQuestion(
 ): Promise<{ answer: string }> {
   const response = await fetch(`${API_URL}/api/papers/${paperId}/clarify`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: await getHeaders(),
     body: JSON.stringify({ 
       question,
       conversation_history: conversationHistory.map(msg => ({
@@ -245,6 +305,21 @@ export async function askQuestion(
 
   if (!response.ok) {
     throw new Error('Failed to get answer');
+  }
+
+  return response.json();
+}
+
+// Usage stats API
+export async function getUsageStats(): Promise<UsageStats> {
+  const headers = await getHeaders();
+  const response = await fetch(`${API_URL}/api/usage-stats`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch usage stats: ${response.statusText}`);
   }
 
   return response.json();

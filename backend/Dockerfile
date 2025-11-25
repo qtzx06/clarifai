@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
 # Install system dependencies
+# Added: libpq-dev for PostgreSQL/Supabase connection
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     build-essential \
@@ -8,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libcairo2-dev \
     libpango1.0-dev \
+    libpq-dev \
     python3-dev \
     texlive \
     texlive-latex-extra \

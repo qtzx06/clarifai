@@ -15,5 +15,8 @@ pillow==10.3.0
 tqdm==4.66.4
 ffmpeg-python==0.2.0
 
+# Text-to-speech for video narration
+gtts==2.5.1
+
 # Other dependencies
 

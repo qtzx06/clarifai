@@ -1,16 +1,15 @@
 import os
 import sys
 import json
-import subprocess
 import time
 import tempfile
 import re
 import shutil
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import google.genai as genai
 from google.genai import types
+from gtts import gTTS
 
 
 def log(message):
@@ -185,6 +184,44 @@ Make sure clip numbers match the scene order exactly."""
         log(f"--- WARNING: Scene caption generation failed: {e} ---")
 
     return scenes
+
+
+def generate_narration_script(client, scene_description):
+    """Generate natural narration script for a single scene using Gemini."""
+    template = read_prompt_template("generate_narration.txt")
+    prompt = template.format(scene_description=scene_description)
+
+    try:
+        response = call_gemini_with_retries(
+            client,
+            prompt,
+            temperature=0.7,  # Higher temp for more natural speech
+            context_label="Narration script generation",
+        )
+        if response and response.text:
+            # Clean up the response - remove any markdown, quotes, etc.
+            script = response.text.strip()
+            script = script.strip('"').strip("'")
+            return script
+    except Exception as e:
+        log(f"--- WARNING: Narration generation failed: {e} ---")
+        # Fallback: use the scene description directly
+        return scene_description
+
+    return scene_description
+
+
+def generate_audio_from_text(text, output_path):
+    """Convert text to speech using gTTS and save as MP3."""
+    try:
+        log(f"Generating audio: {text[:50]}...")
+        tts = gTTS(text=text, lang='en', slow=False)
+        tts.save(output_path)
+        log(f"Audio saved to: {output_path}")
+        return True
+    except Exception as e:
+        log(f"--- ERROR: Audio generation failed: {e} ---")
+        return False
 
 
 def inject_math_shims(code):
@@ -456,10 +493,10 @@ def correct_manim_code(client, code, error):
     return sanitize_code(new_code)
 
 
-def render_manim_code(code, output_dir, file_name):
+async def render_manim_code(code, output_dir, file_name):
     """
     Renders a single Manim scene and returns the full path to the complete video file,
-    ignoring the partial movie files.
+    ignoring the partial movie files. Uses async subprocess for true parallelism.
     """
     class_name = "Scene"
     for line in code.split("\n"):
@@ -490,18 +527,24 @@ def render_manim_code(code, output_dir, file_name):
             "-ql",
         ]
         log("--- DEBUG: Executing Manim command: " + " ".join(cmd) + " ---")
-        process = subprocess.run(
-            cmd, capture_output=True, text=True, check=False, encoding="utf-8"
+
+        # TRUE async subprocess - doesn't block the event loop!
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
 
+        stdout, stderr = await process.communicate()
+        stdout_text = stdout.decode("utf-8") if stdout else ""
+        stderr_text = stderr.decode("utf-8") if stderr else ""
+
         if process.returncode != 0:
-            # --- THIS IS THE DEFINITIVE FIX FOR THE SYNTAX ERROR ---
-            # Build the error message safely to prevent parsing errors.
             error_parts = [
                 "--- MANIM STDOUT ---\\n",
-                process.stdout,
+                stdout_text,
                 "\\n\\n--- MANIM STDERR ---\\n",
-                process.stderr,
+                stderr_text,
             ]
             error_message = "".join(error_parts)
             return None, error_message
@@ -521,20 +564,174 @@ def render_manim_code(code, output_dir, file_name):
         os.unlink(temp_file_path)
 
 
-# Thread pool for running blocking operations concurrently
-executor = ThreadPoolExecutor(max_workers=5)
+async def get_audio_duration(audio_path):
+    """Get the duration of an audio file in seconds using ffprobe (async)"""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            audio_path
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
+            duration = float(stdout.decode().strip())
+            return duration
+        else:
+            log(f"Error getting audio duration: {stderr.decode()}")
+            return None
+    except Exception as e:
+        log(f"Error getting audio duration: {e}")
+        return None
 
-async def asyncify(func, *args):
-    """Wrap synchronous functions for async execution in thread pool"""
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(executor, func, *args)
+
+async def get_video_duration(video_path):
+    """Get the duration of a video file in seconds using ffprobe (async)"""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
+            duration = float(stdout.decode().strip())
+            return duration
+        else:
+            log(f"Error getting video duration: {stderr.decode()}")
+            return None
+    except Exception as e:
+        log(f"Error getting video duration: {e}")
+        return None
+
+
+async def merge_video_with_audio(video_path, audio_path, output_dir):
+    """Merge video clip with audio narration using ffmpeg (async), ensuring video matches audio duration"""
+    if not audio_path or not os.path.exists(audio_path):
+        log("No audio file to merge, returning original video")
+        return video_path
+
+    # Create output path for narrated video
+    base_name = os.path.basename(video_path).replace(".mp4", "_narrated.mp4")
+    narrated_path = os.path.join(output_dir, base_name)
+
+    try:
+        log(f"Merging audio: {audio_path} with video: {video_path}")
+
+        # Get durations (async calls)
+        audio_duration = await get_audio_duration(audio_path)
+        video_duration = await get_video_duration(video_path)
+
+        if audio_duration is None:
+            log("Could not determine audio duration, using -shortest")
+            # Fallback to shortest if we can't get audio duration
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-shortest",
+                narrated_path
+            ]
+        elif video_duration is None:
+            log("Could not determine video duration, using -shortest")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-shortest",
+                narrated_path
+            ]
+        elif video_duration < audio_duration:
+            # Video is shorter than audio - loop video to match audio duration
+            log(f"Video ({video_duration:.2f}s) is shorter than audio ({audio_duration:.2f}s). Looping video to match.")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-stream_loop", "-1",  # Loop video indefinitely
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "libx264",  # Need to re-encode to loop
+                "-c:a", "aac",
+                "-t", str(audio_duration),  # Set output duration to audio length
+                "-shortest",  # Safety: stop at shortest (should be audio)
+                narrated_path
+            ]
+        else:
+            # Video is longer or equal - use shortest to match audio
+            log(f"Video ({video_duration:.2f}s) is longer than or equal to audio ({audio_duration:.2f}s). Using audio duration.")
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i", video_path,
+                "-i", audio_path,
+                "-c:v", "copy",
+                "-c:a", "aac",
+                "-t", str(audio_duration),  # Trim to audio duration
+                narrated_path
+            ]
+
+        log(f"Running ffmpeg: {' '.join(cmd)}")
+
+        # TRUE async subprocess for ffmpeg
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            log(f"FFmpeg merge failed: {stderr.decode()}")
+            return video_path  # Return original on failure
+
+        log(f"Successfully created narrated video: {narrated_path}")
+        return narrated_path
+
+    except Exception as e:
+        log(f"Error merging video with audio: {e}")
+        return video_path  # Return original on error
+
+
+# Note: We use asyncio.to_thread() for CPU-bound Gemini API calls
+# and asyncio.create_subprocess_exec() for I/O-bound subprocess operations
 
 
 async def process_single_clip(i, scene_description, client, output_dir, captions, total_scenes):
-    """Process a single clip with retry logic"""
+    """Process a single clip with retry logic using true async operations"""
     output_filename = f"clip_{i}.mp4"
+    audio_filename = f"clip_{i}_audio.mp3"
+    audio_path = os.path.join(output_dir, audio_filename)
 
     log(f"[Clip {i+1}] Starting generation: {scene_description[:50]}...")
+
+    # Generate narration script and audio FIRST
+    log(f"[Clip {i+1}] Generating narration...")
+    narration_script = await asyncio.to_thread(generate_narration_script, client, scene_description)
+    log(f"[Clip {i+1}] Narration: {narration_script[:100]}...")
+
+    audio_generated = await asyncio.to_thread(generate_audio_from_text, narration_script, audio_path)
+    if not audio_generated:
+        log(f"[Clip {i+1}] WARNING: Audio generation failed, continuing without narration")
+        audio_path = None
 
     code = None
     error = "Initial code generation failed."
@@ -547,21 +744,29 @@ async def process_single_clip(i, scene_description, client, output_dir, captions
 
         try:
             if code is None:
-                code = await asyncify(generate_manim_code, client, scene_description)
+                code = await asyncio.to_thread(generate_manim_code, client, scene_description)
             else:
-                code = await asyncify(correct_manim_code, client, code, error)
+                code = await asyncio.to_thread(correct_manim_code, client, code, error)
 
             # Send progress for rendering
             send_progress(i + 1, total_scenes, "rendering", f"Attempt {attempt}/3")
 
-            video_path, error = await asyncify(render_manim_code, code, output_dir, output_filename)
+            # Direct await - render_manim_code is now truly async!
+            video_path, error = await render_manim_code(code, output_dir, output_filename)
 
             if error is None:
                 log(f"[Clip {i+1}] ✓ Rendered successfully")
+
+                # Merge video with audio narration - also truly async!
+                if audio_path:
+                    log(f"[Clip {i+1}] Merging video with narration...")
+                    narrated_video_path = await merge_video_with_audio(video_path, audio_path, output_dir)
+                    video_path = narrated_video_path
+
                 print(f"CLIP_SUCCESS: {video_path}", flush=True)
                 if i < len(captions):
                     captions[i]["rendered"] = True
-                return {"success": True, "index": i, "path": video_path}
+                return {"success": True, "index": i, "path": video_path, "audio_path": audio_path}
 
             log(f"[Clip {i+1}] ✗ Attempt {attempt} failed")
 
@@ -679,8 +884,6 @@ async def async_main():
             "FINAL_RESULT: "
             + json.dumps({"success": False, "error": "Agent crashed unexpectedly"})
         )
-    finally:
-        executor.shutdown(wait=True)
 
 
 def main():

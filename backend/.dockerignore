@@ -1,21 +1,56 @@
-__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 *.pyc
 *.pyo
 *.pyd
 .Python
 *.so
 *.egg
-*.egg-info
-dist
-build
-.env
-.venv
-env/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
 venv/
-.git
-.gitignore
-*.md
+agent_env/
+env/
+.venv/
+ENV/
+
+# Storage directories (created in container)
 storage/
-.pytest_cache
+clips/
+videos/
+media/
+
+# Environment files (use Railway/Docker env vars instead)
+.env
+.env.*
+!.env.example
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Testing
+.pytest_cache/
 .coverage
 htmlcov/
+*.log
+
+# Documentation (not needed in production)
+*.md
+!README.md

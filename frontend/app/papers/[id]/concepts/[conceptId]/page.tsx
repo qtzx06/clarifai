@@ -78,6 +78,11 @@ export default function ConceptDetailPage() {
         video_url: resolveVideoUrl(foundConcept.video_url),
       });
 
+      // If code already exists, load it immediately
+      if (foundConcept.code) {
+        setCode(foundConcept.code);
+      }
+
       // Poll for video status if generating
       if (foundConcept.video_status === 'generating') {
         pollVideoStatus();
@@ -97,8 +102,8 @@ export default function ConceptDetailPage() {
           setConcept(
             (prev) =>
               prev && {
-                ...prev,
-                video_status: 'ready',
+            ...prev,
+            video_status: 'ready',
                 video_url: resolveVideoUrl(status.video_url),
               }
           );
@@ -117,11 +122,19 @@ export default function ConceptDetailPage() {
   const handleLoadCode = async () => {
     if (!concept) return;
 
+    // If code already exists, just switch to code tab
+    if (code) {
+      setActiveTab('code');
+      return;
+    }
+
     setIsLoadingCode(true);
 
     try {
       const response = await getCodeImplementation(paperId, concept.name);
       setCode(response.code);
+      // Update concept state with the new code
+      setConcept((prev) => prev ? { ...prev, code: response.code } : null);
       setActiveTab('code');
     } catch (err) {
       setError('Failed to generate code');

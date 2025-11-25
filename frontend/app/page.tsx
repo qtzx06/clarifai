@@ -7,9 +7,11 @@ import { Upload } from 'lucide-react';
 import { Navigation } from './components/navigation';
 import { ShaderCanvas } from './components/shader-canvas';
 import { uploadPaper } from './lib/api';
+import { useAuth } from './providers/auth-provider';
 
 export default function Home() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +20,11 @@ export default function Home() {
   useEffect(() => {
     // Trigger initial animation immediately
     setIsLoaded(true);
+    console.log('[LANDING PAGE] Page loaded, user:', user, 'loading:', authLoading);
   }, []);
+
+  // No redirect - landing page is accessible to everyone
+  // Removed redirect useEffect - landing page should be accessible without login
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -58,6 +64,18 @@ export default function Home() {
   }, []);
 
   const handleUpload = async (file: File) => {
+    // Check if user is authenticated before uploading
+    if (authLoading) {
+      setError('Please wait while we check your authentication...');
+      return;
+    }
+
+    if (!user) {
+      // Redirect to login if not authenticated
+      router.push('/login');
+      return;
+    }
+
     setIsUploading(true);
     setError(null);
 
@@ -111,13 +129,13 @@ export default function Home() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 40, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 1.0, delay: 2.3, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 2.3, ease: "easeOut" }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`group relative rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-14 transition-all duration-300 ${
+            className={`group relative rounded-3xl border border-white/20 bg-black/40 backdrop-blur-3xl shadow-2xl p-14 transition-[box-shadow,background-color,border-color,transform] duration-300 ${
               isDragging ? 'ring-2 ring-white/50 scale-[0.99] bg-black/50' : 'hover:ring-2 hover:ring-white/30 hover:bg-black/50 hover:shadow-[0_0_80px_rgba(255,255,255,0.1)]'
             } ${isUploading ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}
           >
@@ -127,10 +145,10 @@ export default function Home() {
               accept="application/pdf"
               onChange={handleFileSelect}
               disabled={isUploading}
-              className="absolute inset-0 z-10 h-full w-full opacity-0 cursor-pointer"
+              className="absolute inset-0 z-30 h-full w-full opacity-0 cursor-pointer"
             />
 
-            <div className="relative z-20 flex flex-col items-center gap-6 text-center">
+            <div className="relative z-0 flex flex-col items-center gap-6 text-center pointer-events-none">
               <motion.div
                 animate={isDragging ? { scale: 1.12 } : { scale: 1 }}
                 transition={{ type: 'spring', stiffness: 260, damping: 18 }}

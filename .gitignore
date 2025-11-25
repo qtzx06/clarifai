@@ -101,7 +101,13 @@ var/
 sdist/
 develop-eggs/
 .installed.cfg
-lib/
+# Python lib directories (but not frontend/app/lib/)
+/venv/lib/
+/venv/lib64/
+/backend/venv/lib/
+/backend/venv/lib64/
+/backend/agent_env/lib/
+/backend/agent_env/lib64/
 lib64/
 
 # Jupyter Notebook

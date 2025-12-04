@@ -6,24 +6,11 @@ deconstruct complex research papers into digestible concepts and automatically g
 
 ## demos
 
-<table>
-  <tr>
-    <td align="center"><b>workflow</b></td>
-    <td align="center"><b>ui</b></td>
-  </tr>
-  <tr>
-    <td>
-      <a href="media/demo.mp4">
-        <img src="media/demo.gif" alt="main demo gif" height="300">
-      </a>
-    </td>
-    <td>
-      <a href="media/landing2.png">
-        <img src="media/landing1.png" alt="main application interface" height="300">
-      </a>
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <img src="media/landing.png" alt="clarifai landing page" width="600">
+  <br><br>
+  <img src="media/demo.gif" alt="clarifai demo" width="600">
+</div>
 
 ### example clips generated for specific concepts.
 
@@ -34,27 +21,6 @@ deconstruct complex research papers into digestible concepts and automatically g
 | rnns vs cnns | bellman's equations |
 | :---: | :---: |
 | <a href="media/demo3.mp4"><img src="media/demo3.gif" alt="demo 3"></a> | <a href="media/demo4.mp4"><img src="media/demo4.gif" alt="demo 4"></a> |
-
----
-
-### extracted paper analysis and the video generation panel.
-
-![a screenshot showing some concepts and the video generation agent panel.](media/landing2.png)
-
-### examples of generated manim animation frames.
-
-<div align="center">
-<table>
-  <tr>
-    <td align="center">
-      <img src="media/image1.png" alt="an example of a generated manim animation frame." height="200">
-    </td>
-    <td align="center">
-      <img src="media/image2.png" alt="another example of a generated manim animation frame." height="200">
-    </td>
-  </tr>
-</table>
-</div>
 
 ---
 

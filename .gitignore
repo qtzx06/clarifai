@@ -129,3 +129,6 @@ poetry.lock
 # Local configuration
 config.local.js
 config.local.json
+
+# Media source files
+*.mov
